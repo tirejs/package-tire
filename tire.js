@@ -1,7 +1,7 @@
 /*!
  * tire.js
- * Copyright (c) 2012 Fredrik Forsmo
- * Version: 1.0.0
+ * Copyright (c) 2013 Fredrik Forsmo
+ * Version: 1.0.1
  * Released under the MIT License.
  */
 (function (window, undefiend) {
@@ -9,7 +9,7 @@
     , _tire      = window.tire
     , _$         = window.$
     , idExp      = /^#/
-    , simpleExp  = /^#?([\w-]+)$/
+    , simpleExp  = /^#?([\w\-]+)$/
     , classExp   = /^\./
     , tagExp     = /<([\w:]+)/
     , slice      = [].slice;
@@ -28,8 +28,8 @@
     slice = function (i) {
       i = i || 0;
       var elem, results = [];
-      for (; (elem = this[i]); i++ ) {
-        results.push( elem );
+      for (; (elem = this[i]); i++) {
+        results.push(elem);
       }
       return results;
     };
@@ -76,7 +76,7 @@
       }
       
       if (tire.isFun(selector)) {
-        tire.ready(selector);
+        return tire.ready(selector);
       }
       
       if (selector.nodeType) {
@@ -120,14 +120,14 @@
         elms = selector;
       }
       
-      return this.set(elms);  
+      return this.set(elms);
     },
     
     /**
      * Fetch property from elements
      *
      * @param {String} prop
-     * @return {Array} 
+     * @return {Array}
      */
     
     pluck: function (prop) {
@@ -148,12 +148,12 @@
     each: function(target, callback) {
       var i, key;
       
-      if (tire.isFun(target)) {
+      if (typeof target === 'function') {
         callback = target;
         target = this;
       }
       
-      if (target === this || tire.isArr(target)) {      
+      if (target === this || target instanceof Array) {
         for (i = 0; i < target.length; ++i) {
           if (callback.call(target[i], target[i], i, target) === false) break;
         }
@@ -188,30 +188,19 @@
    */
   
   tire.extend = function () {
-    var options
-      , i = 1
-      , target = arguments[0] || {};
-    
+    var target = arguments[0] || {};
+  
     if (typeof target !== 'object' && typeof target !== 'function') {
       target = {};
     }
   
-    if (arguments.length === 1) {
-      target = this;
-      i = 0;
-    }
+    if (arguments.length === 1) target = this;
   
-    for (; i < arguments.length; i++) {
-      if ((options = arguments[i]) !== null) {
-        for (var key in options) {
-          if (target[key] === options[key]) {
-            continue;
-          } else {
-            target[key] = options[key];
-          }
-        }
+    tire.fn.each(slice.call(arguments), function (value) {
+      for (var key in value) {
+        if (target[key] !== value[key]) target[key] = value[key];
       }
-    }
+    });
   
     return target;
   };
@@ -346,7 +335,7 @@
   
     /**
      * Calling .noConflict will restore the window.$` to its previous value.
-     * 
+     *
      * @param {Boolean} name Restore `tire` to it's previous value.
      * @return {Object}
      */
@@ -610,16 +599,16 @@
       isReady = true;
   
       for (var i = 0; i < fns.length; i++) {
-        fns[i].call(document);
+        fns[i].call(document, tire);
       }
     }
   
     return function (callback) {
-      return isReady ? callback.call(document) : fns.push(callback);
+      return isReady ? callback.call(document, tire) : fns.push(callback);
     };
   })();
   
-  /** 
+  /**
    * Adding domReady to tire and tire.fn
    */
   
@@ -649,7 +638,7 @@
     closest: function (selector, context) {
       var node = this[0];
         
-      while (node && !tire.matches(node, selector)) {  
+      while (node && !tire.matches(node, selector)) {
         node = node.parentNode;
         if (!node || !node.ownerDocument || node === context || node.nodeType === 11) break;
       }
@@ -658,7 +647,7 @@
     },
     
     /**
-     * Get immediate parents of each element in the collection. 
+     * Get immediate parents of each element in the collection.
      * If CSS selector is given, filter results to include only ones matching the selector.
      *
      * @param {String} selector
@@ -671,7 +660,7 @@
     },
     
     /**
-     * Get immediate children of each element in the current collection. 
+     * Get immediate children of each element in the current collection.
      * If selector is given, filter the results to only include ones matching the CSS selector.
      *
      * @param {String} selector
@@ -683,7 +672,7 @@
       this.each(function () {
         tire.each(tire.slice.call(this.children, 0), function (value) {
           children.push(value);
-        })
+        });
       });
       return selector === undefined ? tire(children) : tire(children).filter(selector);
     },
@@ -734,8 +723,8 @@
     
     /**
      * Empty `innerHTML` for elements
-     * 
-     * @return {Object} 
+     *
+     * @return {Object}
      */
     
     empty: function () {
@@ -1093,7 +1082,7 @@
   }
   
   /**
-   * Ajax success, check if the dataType is json and try to parse it to JSON
+   * Ajax success. Check if the dataType is JSON and try to parse it or just return the response text/xml.
    *
    * @param {Object} data
    * @param {Object} xhr
@@ -1165,7 +1154,7 @@
       
       // test for jsonp
       if (jsonp || /\=\?|callback\=/.test(url)) {
-        if (/\=\?/.test(url)) url = (url + '&' + 'callback=?').replace(/[&?]{1,2}/, '?');
+        if (/\=\?/.test(url)) url = (url + '&callback=?').replace(/[&?]{1,2}/, '?');
         ajaxJSONP(url, options);
         return this;
       }
@@ -1221,7 +1210,7 @@
      * @return {String}
      */
     
-    param : function (obj, prefix) {
+    param: function (obj, prefix) {
       var str = [];
       this.each(obj, function (p, v) {
         var k = prefix ? prefix + '[' + p + ']' : p;
