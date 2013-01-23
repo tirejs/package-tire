@@ -1,7 +1,7 @@
 /*!
  * tire.js
- * Copyright (c) 2013 Fredrik Forsmo
- * Version: 1.0.1
+ * Copyright (c) 2012-2013 Fredrik Forsmo
+ * Version: 1.0.2
  * Released under the MIT License.
  */
 (function (window, undefiend) {
@@ -9,8 +9,8 @@
     , _tire      = window.tire
     , _$         = window.$
     , idExp      = /^#/
-    , simpleExp  = /^#?([\w\-]+)$/
     , classExp   = /^\./
+    , tagNameExp = /^[\w-]+$/
     , tagExp     = /<([\w:]+)/
     , slice      = [].slice;
   
@@ -90,29 +90,27 @@
         this.context = selector[0];
         return this.set(selector);
       }
-      
-      this.context = context = (context || document);
+  
+      context = this.context ? this.context : (context || document);
       
       if (tire.isStr(selector)) {
         this.selector = selector;
-        if (simpleExp.test(selector)) {
-          elms = slice.call(idExp.test(selector) ? [document.getElementById(selector.substr(1))] : document.getElementsByTagName(selector), 0);
-          if (elms[0] === null) {
-            elms = [];
-          }
-        } else if (classExp.test(selector) && document.getElementsByClassName !== undefined) {
-          elms = slice.call(document.getElementsByClassName(selector.substr(1)), 0);
-          if (elms[0] === null) {
-            elms = [];
-          }
+        if (idExp.test(selector) && context.nodeType == context.DOCUMENT_NODE) {
+          elms = (elms = context.getElementById(selector.substr(1))) ? [elms] : [];
+        } else if (context.nodeType !== 1 && context.nodeType !== 9) {
+          elms = [];
         } else if (tagExp.test(selector)) {
-          var tmp = document.createElement('div');
+          var tmp = context.createElement('div');
           tmp.innerHTML = selector;
           this.each.call(slice.call(tmp.childNodes, 0), function () {
             elms.push(this);
           });
         } else {
-          elms = document.querySelectorAll(selector);
+          elms = slice.call(
+            classExp.test(selector) ? context.getElementsByClassName(selector.substr(1)) :
+            tagNameExp.test(selector) ? context.getElementsByTagName(selector) :
+            context.querySelectorAll(selector)
+          );
         }
       } else if (selector.nodeName || selector === window) {
         elms = [selector];
@@ -120,6 +118,17 @@
         elms = selector;
       }
       
+      if (selector.selector !== undefined) {
+        this.selector = selector.selector;
+        this.context = selector.context;
+      } else if (this.context === undefined) {
+        if (elms[0] !== undefined) {
+          this.context = elms[0];
+        } else {
+          this.context = document;
+        }
+      }
+  
       return this.set(elms);
     },
     
