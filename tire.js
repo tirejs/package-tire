@@ -1,7 +1,7 @@
 /*!
  * tire.js
  * Copyright (c) 2012-2013 Fredrik Forsmo
- * Version: 1.0.2
+ * Version: 1.0.3
  * Released under the MIT License.
  */
 (function (window, undefiend) {
@@ -107,7 +107,7 @@
           });
         } else {
           elms = slice.call(
-            classExp.test(selector) && context.getElementsByClassName !== undefined ? context.getElementsByClassName(selector.substr(1)) :
+            classExp.test(selector) ? context.getElementsByClassName(selector.substr(1)) :
             tagNameExp.test(selector) ? context.getElementsByTagName(selector) :
             context.querySelectorAll(selector)
           );
@@ -1062,7 +1062,7 @@
   });
   /**
    * Create a JSONP request
-   * 
+   *
    * @param {String} url
    * @param {Object} options
    */
@@ -1163,7 +1163,7 @@
       
       // test for jsonp
       if (jsonp || /\=\?|callback\=/.test(url)) {
-        if (/\=\?/.test(url)) url = (url + '&callback=?').replace(/[&?]{1,2}/, '?');
+        if (/\=\?/.test(url)) url = url.replace(/[&?]{1,2}/, '?');
         ajaxJSONP(url, options);
         return this;
       }
@@ -1202,7 +1202,7 @@
         };
         
         xhr.send(tire.param(params));
-      } 
+      }
   
       return this;
     }
@@ -1214,7 +1214,7 @@
     /**
      * Create a serialized representation of an array or object.
      *
-     * @param {Array|Object} obj 
+     * @param {Array|Object} obj
      * @param {Obj} prefix
      * @return {String}
      */
@@ -1225,7 +1225,7 @@
         var k = prefix ? prefix + '[' + p + ']' : p;
         str.push(tire.isObj(v) ? tire.param(v, k) : encodeURIComponent(k) + '=' + encodeURIComponent(v));
       });
-      return str.join('&').replace('%20', '+');   
+      return str.join('&').replace('%20', '+');
     }
   });
   
