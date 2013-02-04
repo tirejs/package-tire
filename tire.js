@@ -1,7 +1,7 @@
 /*!
  * tire.js
  * Copyright (c) 2012-2013 Fredrik Forsmo
- * Version: 1.0.3
+ * Version: 1.1.0
  * Released under the MIT License.
  */
 (function (window, undefiend) {
@@ -10,7 +10,7 @@
     , _$         = window.$
     , idExp      = /^#/
     , classExp   = /^\./
-    , tagNameExp = /^[\w-]+$/
+    , tagNameExp = /^[\w\-]+$/
     , tagExp     = /<([\w:]+)/
     , slice      = [].slice;
   
@@ -40,25 +40,25 @@
   };
   
   tire.fn = tire.prototype = {
-    
+  
     /**
      * Default length is zero
      */
-     
+  
     length: 0,
-    
+  
     /**
      * Extend `tire.fn`
      *
      * @param {Object} o
      */
-      
+  
     extend: function (o) {
       for (var k in o) {
         this[k] = o[k];
       }
     },
-    
+  
     /**
      * Find elements by selector
      *
@@ -67,24 +67,24 @@
      *
      * @return {Object}
      */
-    
+  
     find: function (selector, context) {
-      var elms = [];
-      
+      var elms = [], attrs;
+  
       if (!selector) {
         return this;
       }
-      
-      if (tire.isFun(selector)) {
+  
+      if (tire.isFunction(selector)) {
         return tire.ready(selector);
       }
-      
+  
       if (selector.nodeType) {
         this.selector = '';
         this.context = selector;
         return this.set([selector]);
       }
-      
+  
       if (selector.length === 1 && selector[0].nodeType) {
         this.selector = selector.selector;
         this.context = selector[0];
@@ -92,10 +92,15 @@
       }
   
       context = this.context ? this.context : (context || document);
-      
-      if (tire.isStr(selector)) {
+  
+      if (tire.isPlainObject(context)) {
+        attrs = context;
+        context = document;
+      }
+  
+      if (tire.isString(selector)) {
         this.selector = selector;
-        if (idExp.test(selector) && context.nodeType == context.DOCUMENT_NODE) {
+        if (idExp.test(selector) && context.nodeType === context.DOCUMENT_NODE) {
           elms = (elms = context.getElementById(selector.substr(1))) ? [elms] : [];
         } else if (context.nodeType !== 1 && context.nodeType !== 9) {
           elms = [];
@@ -107,17 +112,17 @@
           });
         } else {
           elms = slice.call(
-            classExp.test(selector) ? context.getElementsByClassName(selector.substr(1)) :
+            classExp.test(selector) && context.getElementsByClassName !== undefined ? context.getElementsByClassName(selector.substr(1)) :
             tagNameExp.test(selector) ? context.getElementsByTagName(selector) :
             context.querySelectorAll(selector)
           );
         }
       } else if (selector.nodeName || selector === window) {
         elms = [selector];
-      } else if (tire.isArr(selector)) {
+      } else if (tire.isArray(selector)) {
         elms = selector;
       }
-      
+  
       if (selector.selector !== undefined) {
         this.selector = selector.selector;
         this.context = selector.context;
@@ -129,16 +134,18 @@
         }
       }
   
-      return this.set(elms);
+      return this.set(elms).each(function () {
+        return attrs && $(this).attr(attrs);
+      });
     },
-    
+  
     /**
      * Fetch property from elements
      *
      * @param {String} prop
      * @return {Array}
      */
-    
+  
     pluck: function (prop) {
       var result = [];
       this.each(function () {
@@ -146,22 +153,22 @@
       });
       return result;
     },
-    
+  
     /**
      * Run callback for each element in the collection
      *
      * @param {Function} callback
      * @return {Object}
      */
-    
+  
     each: function(target, callback) {
       var i, key;
-      
+  
       if (typeof target === 'function') {
         callback = target;
         target = this;
       }
-      
+  
       if (target === this || target instanceof Array) {
         for (i = 0; i < target.length; ++i) {
           if (callback.call(target[i], target[i], i, target) === false) break;
@@ -171,17 +178,17 @@
           if (target.hasOwnProperty(key) && callback.call(target[key], key, target[key]) === false) break;
         }
       }
-      
+  
       return target;
     },
-    
+  
     /**
      * Set elements to tire object before returning `this`
      *
      * @param {Array} elements
      * @return {Object}
      */
-    
+  
     set: function (elements) {
       var i = 0;
       for (; i < elements.length; i++) {
@@ -220,7 +227,7 @@
   
     // We sould be able to use slice outside
     slice: slice,
-    
+  
     // We sould be able to use each outside
     each: tire.fn.each,
   
@@ -260,65 +267,92 @@
           if (nodes[i] === element) return true;
         }
       }
-      
+  
       return false;
     },
   
     /**
-     * Check if the object is a function
+     * Check if the `obj` is a function
      *
      * @param {Object} obj
      * @return {Boolean}
      */
   
-    isFun: function (obj) {
+    isFunction: function (obj) {
       return typeof obj === 'function';
     },
   
     /**
-     * Check if the object is a array
+     * Check if the `obj` is a array
      *
      * @param {Object} obj
      * @return {Boolean}
      */
   
-    isArr: function (obj) {
+    isArray: function (obj) {
       return obj instanceof Array;
     },
   
     /**
-     * Check if the object is a string
+     * Check if the `obj` is a string
      *
      * @param {Object} obj
      * @return {Boolean}
      */
   
-    isStr: function (obj) {
+    isString: function (obj) {
       return typeof obj === 'string';
     },
   
     /**
-     * Check if the object is a number
+     * Check if the `obj` is a number
      *
      * @param {Object} obj
      * @return {Boolean}
      */
   
-    isNum: function (obj) {
+    isNumeric: function (obj) {
       return typeof obj === 'number';
     },
   
     /**
-     * Check if the object is a object
+     * Check if the `obj` is a object
      *
      * @param {Object} obj
      * @return {Boolean}
      */
   
-    isObj: function (obj) {
-      return obj instanceof Object && !this.isArr(obj) && !this.isFun(obj);
+    isObject: function (obj) {
+      return obj instanceof Object && !this.isArray(obj) && !this.isFunction(obj) && !this.isWindow(obj);
     },
-    
+  
+    /**
+     * Check if `obj` is a plain object
+     *
+     * @param {Object} obj
+     * @return {Boolean}
+     */
+  
+    isPlainObject: function (obj) {
+      if (!obj || !this.isObject(obj) || this.isWindow(obj) || obj.nodeType) {
+        return false;
+      } else if (obj.__proto__ === Object.prototype) {
+        return true;
+      } else {
+        var key;
+        for (key in obj) {}
+        return key === undefined || {}.hasOwnProperty.call(obj, key);
+      }
+    },
+  
+    /**
+     * Check if `obj` is a `window` object
+     */
+  
+    isWindow: function (obj) {
+      return obj !== null && obj !== undefined && (obj === obj.window || 'setInterval' in obj);
+    },
+  
     /**
      * Parse JSON string to object.
      *
@@ -327,7 +361,7 @@
      */
   
     parseJSON: function (str) {
-      if (!this.isStr(str) || !str) {
+      if (!this.isString(str) || !str) {
         return null;
       }
   
@@ -336,7 +370,7 @@
       if (window.JSON && window.JSON.parse) {
         return window.JSON.parse(str);
       }
-     
+  
       // Solution to fix JSON parse support for older browser. Not so nice but it works.
       try { return (new Function('return ' + str))(); }
       catch (e) { return null; }
@@ -359,15 +393,15 @@
     }
   });
   tire.fn.extend({
-    
+  
     /**
      * Add classes to element collection
      *
      * @param {String} value
      */
-    
+  
     addClass: function (value) {
-      if (value && tire.isStr(value)) {
+      if (value && tire.isString(value)) {
         return this.each(function (elm) {
           if (elm.nodeType === 1) {
             var classNames = value.split(/\s+/);
@@ -375,29 +409,29 @@
               elm.className = value;
             } else {
               var className = elm.className;
-         
+  
               for (var i = 0; i < classNames.length; i++) {
                 if (className.indexOf(classNames[i]) === -1) {
                   className += ' ' + classNames[i];
                 }
               }
-           
+  
               elm.className = tire.trim(className);
             }
           }
         });
       }
     },
-    
+  
     /**
      * Remove classes from element collection
      *
      * @param {String} value
      */
-    
+  
     removeClass: function (value) {
       return this.each(function (elm) {
-        if (value && tire.isStr(value)) {
+        if (value && tire.isString(value)) {
           var classNames = value.split(/\s+/);
           if (elm.nodeType === 1 && elm.className) {
             if (classNames.length === 1) {
@@ -407,9 +441,9 @@
                 elm.className = elm.className.replace(classNames[i], '');
               }
             }
-    
+  
             elm.className = tire.trim(elm.className.replace(/\s{2}/g, ' '));
-    
+  
             if (elm.className === '') {
               elm.removeAttribute('class');
             }
@@ -417,33 +451,33 @@
         }
       });
     },
-    
+  
     /**
      * Check if the first element in the collection has classes
      *
      * @param {String} value
      * @return {Boolean}
      */
-    
+  
     hasClass: function (value) {
       var classNames = (this[0] ? this[0] : this).className.split(/\s+/)
         , values = value.split(/\s+/)
         , i = 0;
-    
+  
       if (values.length > 1) {
         var hasClasses = false;
         for (i = 0; i < values.length; i++) {
           hasClasses = this.hasClass.call(this, values[i]);
         }
         return hasClasses;
-      } else if (tire.isStr(value)) {
+      } else if (tire.isString(value)) {
         for (i = 0; i < classNames.length; i++) {
           if (classNames[i] === value) return true;
         }
         return false;
       }
     },
-    
+  
     /**
      * Get attribute from element
      * Set attribute to element collection
@@ -453,16 +487,28 @@
      *
      * @return {Object|String}
      */
-    
+  
     attr: function (name, value) {
-      if (value && tire.isStr(value)) {
+      if (tire.isObject(name)) {
         return this.each(function () {
-          this.setAttribute(name, value);
+          for (var key in name) {
+            if (this.setAttribute) {
+              // Firefox 3.5 fix "null + '';"
+              this.setAttribute(key, name[key] === null ? name[key] + '' : name[key]);
+            }
+          }
         });
-      } else if (tire.isStr(name)) {
+      } else if ((value || value === null || value === false) && tire.isString(name)) {
+        return this.each(function () {
+          if (this.setAttribute) {
+            // Firefox 3.5 fix "null + '';"
+            this.setAttribute(name, value === null ? value + '' : value);
+          }
+        });
+      } else if (tire.isString(name)) {
         var attribute;
         for (var i = 0; i < this.length; i++) {
-          if ((attribute = this[i].getAttribute(name)) !== null) {
+          if (this[i].getAttribute !== undefined && (attribute = this[i].getAttribute(name)) !== null) {
             break;
           } else {
             continue;
@@ -471,7 +517,21 @@
         return attribute;
       }
     },
-    
+  
+    /**
+     * Shortcut for data-* attributes.
+     *
+     * @param {String} name
+     * @param {String|Object} value
+     *
+     * @return {Object|String}
+     */
+  
+    data: function (name, value) {
+      value = this.attr('data-' + name, seralizeValue(value));
+      return value instanceof tire ? value : deseralizeValue(value);
+    },
+  
     /**
      * Remove attributes from element collection
      *
@@ -479,7 +539,7 @@
      *
      * @return {Object}
      */
-    
+  
     removeAttr: function (name) {
       return this.each(function () {
         if (name && this.nodeType === 1) {
@@ -491,60 +551,105 @@
       });
     }
   });
+  
+  /**
+   * Serialize value into string
+   *
+   * @param {Object} value
+   *
+   * @return {String}
+   */
+  
+  function seralizeValue (value) {
+    try {
+      return value ? (tire.isPlainObject(value) || tire.isArray(value)) &&
+      JSON.stringify ? JSON.stringify(value) : value : value;
+    } catch (e) {
+      return value;
+    }
+  }
+  
+  /**
+   * Deserialize value from string to true, false, null, number, object or array.
+   *
+   * @param {String} value
+   *
+   * @return {Object}
+   */
+  
+  function deseralizeValue (value) {
+    var num;
+    try {
+      return value ? value === 'true' || (value === 'false' ? false :
+      value === 'null' ? null : !isNaN(num = Number(value)) ? num :
+      /^[\[\{]/.test(value) ? tire.parseJSON(value) : value) : value;
+    } catch (e) {
+      return value;
+    }
+  }
   tire.fn.extend({
-    
+  
     /**
      * Get css property
      * Set css properties
      *
      * Examples:
      *
-     *     // Get property
-     *     $('div').css('color'); will return the css property
+     *  // Get property
+     *  $('div').css('color'); will return the css property
      *
-     *     // Set properties
-     *     $('div').css('color', 'black');
-     *     $('div').css({ color: 'black', backgroundColor: 'white' });
+     *  // Set properties
+     *  $('div').css('color', 'black');
+     *  $('div').css({ color: 'black', backgroundColor: 'white' });
      *
      * @param {String|Object} prop
      * @param {String} value
      * @return {String|Object}
      */
-    
+  
     css: function (prop, value) {
-      if (tire.isStr(prop) && value === undefined) {
+      if (tire.isString(prop) && value === undefined) {
         return this.length > 0 ? getPropertyValue(this[0], prop) : undefined;
       }
-      
+  
       return this.each(function () {
-        if (tire.isStr(prop)) {
-          this.style[prop] = value;
-        } else {
-          for (var key in prop) {
-            this.style[key] = prop[key];
+        if (this.style !== undefined) {
+          if (tire.isString(prop)) {
+            this.style[prop] = value;
+          } else {
+            for (var key in prop) {
+              this.style[key] = prop[key];
+            }
           }
         }
       });
     },
-    
+  
     /**
      * Hide elements in collection
      *
      * @return {Object}
      */
-    
+  
     hide: function () {
       return this.css('display', 'none');
     },
-    
+  
     /**
      * Show elements in collection
      *
      * @return {Object}
      */
-    
+  
     show: function () {
-      return this.css('display', '');
+      return this.each(function () {
+        if (this.style !== undefined) {
+          try { // This don't work in IE8.
+            if (this.style.display === 'none') this.style.display = null;
+          } catch (e) {}
+          if (getPropertyValue(this, 'display') === 'none') this.style.display = 'block';
+        }
+      });
     }
   });
   
@@ -557,7 +662,7 @@
       value = elm.currentStyle[prop];
     } else {
       value = elm.style[prop];
-    }  
+    }
     return !!value ? value : '';
   }
   var domReady = (function () {
@@ -715,7 +820,7 @@
      */
     
     val: function (value) {
-      if (value === undefined) {
+      if (!arguments.length) {
         if (this.length > 0) {
           return this[0].multiple ? this.find('option').filter(function () {
             return this.selected;
@@ -725,6 +830,13 @@
         return null;
       } else {
         return this.each(function () {
+          if (this.nodeType !== 1) {
+            return;
+          } else if (value === null || value === undefined) {
+            value = '';
+          } else if (tire.isNumeric(value)) {
+            value += '';
+          }
           this.value = value;
         });
       }
@@ -762,7 +874,7 @@
   
       return this.each(function () {
         if (location === 'inner') {
-          if (tire.isStr(html) || tire.isNum(html)) {
+          if (tire.isString(html) || tire.isNumber(html)) {
             this.innerHTML = html;
           } else {
             this.innerHTML = '';
@@ -805,7 +917,7 @@
   
   function wrap (html) {
     var elm = document.createElement('div');
-    if (tire.isStr(html)) {
+    if (tire.isString(html)) {
       elm.innerHTML = html;
     } else {
       elm.appendChild(html);
@@ -822,7 +934,7 @@
      */
     
     filter: function (obj) {
-      if (tire.isFun(obj)) {
+      if (tire.isFunction(obj)) {
         var elements = [];
         this.each(function (elm, index) {
           if (obj.call(elm, index)) {
@@ -844,13 +956,13 @@
      * @return {Object}
      */
     
-    not: function (selector) {      
+    not: function (selector) {
       return this.filter(function () {
         return !tire.matches(this, selector);
       });
     },
     
-    /** 
+    /**
      * Get the element at position specified by index from the current collection.
      *
      * @param {Integer} index
@@ -859,6 +971,31 @@
     
     eq: function (index) {
       return index === -1 ? tire(slice.call(this, this.length -1)) : tire(slice.call(this, index, index + 1));
+    },
+  
+    /**
+     * Retrieve the DOM elements matched by the tire object.
+     *
+     * @param {Integer} index
+     * @return {object}
+     */
+  
+    get: function (index) {
+      return index === undefined ? slice.call(this) : this[index >= 0 ? index : index + this.length];
+    },
+  
+    /**
+     * Clone elements
+     *
+     * @return {Object}
+     */
+  
+    clone: function () {
+      var res = [];
+      this.each(function () {
+        res.push(this.cloneNode(true));
+      });
+      return tire(res);
     }
   });
   var _eventId = 1
@@ -875,7 +1012,7 @@
     return element._eventId || (element._eventId = _eventId++);
   }
   
-  /** 
+  /**
    * Get event handlers
    *
    * @param {Integer} id
@@ -950,7 +1087,7 @@
           element.removeEventListener(eventName, handlers[i], false);
         } else if (element.detachEvent) {
           var name = 'on' + eventName;
-          if (tire.isStr(element[name])) element[name] = null;
+          if (tire.isString(element[name])) element[name] = null;
           element.detachEvent(name, handlers[i]);
         }
         c[id][eventName].remove(i, 1);
@@ -1107,7 +1244,7 @@
       res = res || xhr.responseText;
     }
     if (!res && data) res = data;
-    if (tire.isFun(options.success)) options.success(res);
+    if (tire.isFunction(options.success)) options.success(res);
   }
           
   tire.fn.extend({
@@ -1124,15 +1261,15 @@
     ajax: function (url, options) {
       options = options || {};
       
-      if (tire.isObj(url)) {
-        if (tire.isFun(options)) {
+      if (tire.isObject(url)) {
+        if (tire.isFunction(options)) {
           url.success = url.success || options;
         }
         options = url;
         url = options.url;
       }
       
-      if (tire.isFun(options)) options = { success: options };
+      if (tire.isFunction(options)) options = { success: options };
       
       options.dataType = (options.dataType || '').toLowerCase();
           
@@ -1223,7 +1360,7 @@
       var str = [];
       this.each(obj, function (p, v) {
         var k = prefix ? prefix + '[' + p + ']' : p;
-        str.push(tire.isObj(v) ? tire.param(v, k) : encodeURIComponent(k) + '=' + encodeURIComponent(v));
+        str.push(tire.isObject(v) ? tire.param(v, k) : encodeURIComponent(k) + '=' + encodeURIComponent(v));
       });
       return str.join('&').replace('%20', '+');
     }
