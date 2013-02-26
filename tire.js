@@ -1,15 +1,16 @@
 /*!
  * tire.js
  * Copyright (c) 2012-2013 Fredrik Forsmo
- * Version: 1.1.0
+ * Version: 1.1.1
  * Released under the MIT License.
  */
-(function (window, undefiend) {
+(function (window, undefined) {
+
   var document   = window.document
     , _tire      = window.tire
     , _$         = window.$
-    , idExp      = /^#/
-    , classExp   = /^\./
+    , idExp      = /^#[\w\-]+$/
+    , classExp   = /^\.[\w\-]+$/
     , tagNameExp = /^[\w\-]+$/
     , tagExp     = /<([\w:]+)/
     , slice      = [].slice;
@@ -127,7 +128,7 @@
         this.selector = selector.selector;
         this.context = selector.context;
       } else if (this.context === undefined) {
-        if (elms[0] !== undefined) {
+        if (elms[0] !== undefined && !tire.isString(elms[0])) {
           this.context = elms[0];
         } else {
           this.context = document;
@@ -171,7 +172,7 @@
   
       if (target === this || target instanceof Array) {
         for (i = 0; i < target.length; ++i) {
-          if (callback.call(target[i], target[i], i, target) === false) break;
+          if (callback.call(target[i], i, target[i]) === false) break;
         }
       } else {
         for (key in target) {
@@ -212,7 +213,7 @@
   
     if (arguments.length === 1) target = this;
   
-    tire.fn.each(slice.call(arguments), function (value) {
+    tire.fn.each(slice.call(arguments), function (index, value) {
       for (var key in value) {
         if (target[key] !== value[key]) target[key] = value[key];
       }
@@ -357,7 +358,7 @@
      * Parse JSON string to object.
      *
      * @param {String} str
-     * @return {Object|null)
+     * @return {Object|null}
      */
   
     parseJSON: function (str) {
@@ -402,7 +403,7 @@
   
     addClass: function (value) {
       if (value && tire.isString(value)) {
-        return this.each(function (elm) {
+        return this.each(function (index, elm) {
           if (elm.nodeType === 1) {
             var classNames = value.split(/\s+/);
             if (!elm.className && classNames.length === 1) {
@@ -430,7 +431,7 @@
      */
   
     removeClass: function (value) {
-      return this.each(function (elm) {
+      return this.each(function (index, elm) {
         if (value && tire.isString(value)) {
           var classNames = value.split(/\s+/);
           if (elm.nodeType === 1 && elm.className) {
@@ -455,7 +456,7 @@
     /**
      * Check if the first element in the collection has classes
      *
-     * @param {String} value
+     * @param {String} value
      * @return {Boolean}
      */
   
@@ -683,7 +684,7 @@
         scrollCheck();
       }
     }
-    
+  
     function done () {
       if (addEventListener) {
         document.removeEventListener('DOMContentLoaded', done, false);
@@ -736,11 +737,11 @@
      * @param {String|Object} selector The selector match
      * @return {Boolean}
      */
-     
+  
     is: function (selector) {
       return this.length > 0 && tire.matches(this[0], selector);
     },
-    
+  
     /**
      * Get the first element that matches the selector, beginning at the current element and progressing up through the DOM tree.
      *
@@ -748,18 +749,18 @@
      * @param {Object} context
      * @return {Object}
      */
-      
+  
     closest: function (selector, context) {
       var node = this[0];
-        
+  
       while (node && !tire.matches(node, selector)) {
         node = node.parentNode;
         if (!node || !node.ownerDocument || node === context || node.nodeType === 11) break;
       }
-      
+  
       return tire(node);
     },
-    
+  
     /**
      * Get immediate parents of each element in the collection.
      * If CSS selector is given, filter results to include only ones matching the selector.
@@ -767,12 +768,12 @@
      * @param {String} selector
      * @return {Object}
      */
-    
+  
     parent: function (selector) {
       var parent = this.pluck('parentNode');
       return selector === undefined ? tire(parent) : tire(parent).filter(selector);
     },
-    
+  
     /**
      * Get immediate children of each element in the current collection.
      * If selector is given, filter the results to only include ones matching the CSS selector.
@@ -780,11 +781,11 @@
      * @param {String} selector
      * @return {Object}
      */
-    
+  
     children: function (selector) {
       var children = [];
       this.each(function () {
-        tire.each(tire.slice.call(this.children, 0), function (value) {
+        tire.each(tire.slice.call(this.children, 0), function (index, value) {
           children.push(value);
         });
       });
@@ -800,17 +801,17 @@
      * @param {String} text
      * @return {Object|String}
      */
-     
+  
     text: function (text) {
       if (text === undefined) {
-        return this.length > 0 ? this[0].textContent : null;
+        return this.length > 0 ? this[0].textContent === undefined ? this[0].innerText : this[0].textContent : null;
       } else {
         return this.each(function () {
           this.textContent = text;
         });
       }
     },
-    
+  
     /**
      * Get value for input/select elements
      * Set value for input/select elements
@@ -818,7 +819,7 @@
      * @param {String} value
      * @return {Object|String}
      */
-    
+  
     val: function (value) {
       if (!arguments.length) {
         if (this.length > 0) {
@@ -826,7 +827,7 @@
             return this.selected;
           }).pluck('value') : this[0].value;
         }
-        
+  
         return null;
       } else {
         return this.each(function () {
@@ -841,19 +842,19 @@
         });
       }
     },
-    
+  
     /**
      * Empty `innerHTML` for elements
      *
      * @return {Object}
      */
-    
+  
     empty: function () {
       return this.each(function () {
         this.innerHTML = '';
       });
     },
-    
+  
     /**
      * Get html for the first element in the collection
      * Set html for every elements in the collection
@@ -862,19 +863,24 @@
      * @param {String} location
      * @return {String|Object}
      */
-    
+  
     html: function (html, location) {
       if (arguments.length === 0) {
         return this.length > 0 ? this[0].innerHTML : null;
       }
-          
+  
       location = location || 'inner';
   
-      if (html instanceof tire) html = html[0];
+      if (html instanceof tire) {
+        var self = this;
+        return html.each(function (index, elm) {
+          self.html.call(self, elm, location);
+        });
+      }
   
       return this.each(function () {
         if (location === 'inner') {
-          if (tire.isString(html) || tire.isNumber(html)) {
+          if (tire.isString(html) || tire.isNumeric(html)) {
             this.innerHTML = html;
           } else {
             this.innerHTML = '';
@@ -886,7 +892,7 @@
           var wrapped  = wrap(html)
             , children = wrapped.childNodes
             , parent;
-        
+  
           if (location === 'prepend') {
             this.insertBefore(wrapped, this.firstChild);
           } else if (location === 'append') {
@@ -907,7 +913,7 @@
     }
   });
   
-  tire.each(['prepend', 'append', 'before', 'after', 'remove'], function (name) {
+  tire.each(['prepend', 'append', 'before', 'after', 'remove'], function (index, name) {
     tire.fn[name] = function (name) {
       return function (html) {
         return this.html(html, name);
@@ -917,7 +923,7 @@
   
   function wrap (html) {
     var elm = document.createElement('div');
-    if (tire.isString(html)) {
+    if (tire.isString(html) || tire.isNumeric(html)) {
       elm.innerHTML = html;
     } else {
       elm.appendChild(html);
@@ -925,18 +931,18 @@
     return elm;
   }
   tire.fn.extend({
-    
+  
     /**
      * Filter element collection
      *
      * @param {String|Function} obj
      * @return {Object}
      */
-    
+  
     filter: function (obj) {
       if (tire.isFunction(obj)) {
         var elements = [];
-        this.each(function (elm, index) {
+        this.each(function (index, elm) {
           if (obj.call(elm, index)) {
             elements.push(elm);
           }
@@ -948,27 +954,27 @@
         });
       }
     },
-    
+  
     /**
      * Get elements in list but not with this selector
      *
      * @param {String} selector
      * @return {Object}
      */
-    
+  
     not: function (selector) {
       return this.filter(function () {
         return !tire.matches(this, selector);
       });
     },
-    
+  
     /**
      * Get the element at position specified by index from the current collection.
      *
      * @param {Integer} index
      * @return {Object}
      */
-    
+  
     eq: function (index) {
       return index === -1 ? tire(slice.call(this, this.length -1)) : tire(slice.call(this, index, index + 1));
     },
@@ -1036,14 +1042,14 @@
   function createEventHandler (element, eventName, callback) {
     var id = getEventId(element)
       , handlers = getEventHandlers(id, eventName);
-    
+  
     var fn = function (event) {
       if (callback.call(element, event) === false) {
         event.preventDefault();
         event.stopPropagation();
       }
     };
-    
+  
     fn.guid = callback.guid = callback.guid || ++_eventId;
     handlers.push(fn);
     return fn;
@@ -1060,7 +1066,7 @@
   
   function addEvent (element, eventName, callback) {
     var handler = createEventHandler(element, eventName, callback);
-    
+  
     if (element.addEventListener) {
       element.addEventListener(eventName, handler, false);
     } else if (element.attachEvent) {
@@ -1080,7 +1086,7 @@
   function removeEvent (element, eventName, callback) {
     var id = getEventId(element)
       , handlers = getEventHandlers(id, eventName);
-      
+  
     for (var i = 0; i < handlers.length; i++) {
       if (callback === undefined || callback.guid === handlers[i].guid) {
         if (element.removeEventListener) {
@@ -1093,7 +1099,7 @@
         c[id][eventName].remove(i, 1);
       }
     }
-    
+  
     delete c[id];
   }
   
@@ -1105,7 +1111,7 @@
    */
   
   function eachEvent(eventName, callback) {
-    tire.each(eventName.split(' '), function (name) {
+    tire.each(eventName.split(' '), function (index, name) {
       callback(name);
     });
   }
@@ -1113,15 +1119,15 @@
   tire.events = tire.events || {};
   
   tire.fn.extend({
-    
+  
     /**
      * Add event to element
      *
      * @param {String} eventName
      * @param {Function} callback
-     * @return {Object}
+     * @return {Object}
      */
-    
+  
     on: function (eventName, callback) {
       return this.each(function () {
         var self = this;
@@ -1130,15 +1136,15 @@
         });
       });
     },
-    
+  
     /**
      * Remove event from element
      *
      * @param {String} eventName
      * @param {Function} callback (optional)
-     * @return {Object}
+     * @return {Object}
      */
-    
+  
     off: function (eventName, callback) {
       return this.each(function () {
         var self = this;
@@ -1147,7 +1153,7 @@
         });
       });
     },
-    
+  
     /**
      * Trigger specific event for element collection
      *
@@ -1155,14 +1161,14 @@
      * @param {Object} data JSON Object to use as the event's `data` property
      * @return {Object}
      */
-    
+  
     trigger: function (eventName, data) {
-      return this.each(function (elm) {
+      return this.each(function (index, elm) {
         if (elm === document && !elm.dispatchEvent) elm = document.documentElement;
-    
+  
         var event
           , createEvent = !!document.createEvent;
-    
+  
         if (createEvent) {
           event = document.createEvent('HTMLEvents');
           event.initEvent(eventName, true, true);
@@ -1170,10 +1176,10 @@
           event = document.createEventObject();
           event.cancelBubble = true;
         }
-          
+  
         event.data = data || {};
         event.eventName = eventName;
-          
+  
         if (createEvent) {
           elm.dispatchEvent(event);
         } else {
@@ -1195,7 +1201,7 @@
         }
       });
     }
-    
+  
   });
   /**
    * Create a JSONP request
@@ -1365,7 +1371,7 @@
       return str.join('&').replace('%20', '+');
     }
   });
-  
+
   // Expose tire to the global object
   window.$ = window.tire = tire;
 
