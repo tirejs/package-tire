@@ -1,25 +1,28 @@
 /*!
  * tire.js
  * Copyright (c) 2012-2013 Fredrik Forsmo
- * Version: 1.1.1
+ * Version: 1.2.0
  * Released under the MIT License.
+ *
+ * Date: 2013-05-24
  */
 (function (window, undefined) {
 
   var document   = window.document
     , _tire      = window.tire
     , _$         = window.$
-    , idExp      = /^#[\w\-]+$/
-    , classExp   = /^\.[\w\-]+$/
+    , idExp      = /^#([\w\-]*)$/
+    , classExp   = /^\.([\w\-]*)$/
     , tagNameExp = /^[\w\-]+$/
-    , tagExp     = /<([\w:]+)/
-    , slice      = [].slice;
+    , tagExp     = /^<([\w:]+)/
+    , slice      = [].slice
+    , noop       = function () {};
   
   // Array Remove - By John Resig (MIT Licensed)
-  Array.prototype.remove = function(from, to) {
-    var rest = this.slice((to || from) + 1 || this.length);
-    this.length = from < 0 ? this.length + from : from;
-    return this.push.apply(this, rest);
+  Array.remove = function(array, from, to) {
+    var rest = array.slice((to || from) + 1 || array.length);
+    array.length = from < 0 ? array.length + from : from;
+    return array.push.apply(array, rest);
   };
   
   // If slice is not available we provide a backup
@@ -87,8 +90,7 @@
       }
   
       if (selector.length === 1 && selector[0].nodeType) {
-        this.selector = selector.selector;
-        this.context = selector[0];
+        this.selector = this.context = selector[0];
         return this.set(selector);
       }
   
@@ -136,7 +138,7 @@
       }
   
       return this.set(elms).each(function () {
-        return attrs && $(this).attr(attrs);
+        return attrs && tire(this).attr(attrs);
       });
     },
   
@@ -191,12 +193,15 @@
      */
   
     set: function (elements) {
-      var i = 0;
+      // Introduce a fresh `tire` set to prevent context from being overridden
+      var i = 0, newSet = tire();
+      newSet.selector = this.selector;
+      newSet.context = this.context;
       for (; i < elements.length; i++) {
-        this[i] = elements[i];
+        newSet[i] = elements[i];
       }
-      this.length = i;
-      return this;
+      newSet.length = i;
+      return newSet;
     }
   };
   
@@ -226,8 +231,8 @@
   
   tire.extend({
   
-    // We sould be able to use slice outside
-    slice: slice,
+    // The current version of tire being used
+    version: '1.2.0',
   
     // We sould be able to use each outside
     each: tire.fn.each,
@@ -240,7 +245,20 @@
      */
   
     trim: function (str) {
-      return str.trim ? str.trim() : str.replace(/^\s+|\s+$/g, '');
+      return str == null ? '' : str.trim ? str.trim() : ('' + str).replace(/^\s+|\s+$/g, '');
+    },
+  
+    /**
+     * Check to see if a DOM element is a descendant of another DOM element.
+     *
+     * @param {Object} parent
+     * @param {Object} node
+     *
+     * @return {Boolean}
+     */
+  
+    contains: function (parent, node) {
+      return parent.contains ? parent != node && parent.contains(node) : !!(parent.compareDocumentPosition(node) & 16);
     },
   
     /**
@@ -393,6 +411,262 @@
       return tire;
     }
   });
+  /**
+   * Create JSONP request.
+   *
+   * @param {String} url
+   * @param {Object} options
+   */
+  
+  function ajaxJSONP (url, options) {
+    var name = (name = /callback\=([A-Za-z0-9\-\.]+)/.exec(url)) ? name[1] : 'jsonp' + (+new Date())
+      , elm = document.createElement('script')
+      , abortTimeout = null
+      , cleanUp = function () {
+          if (abortTimeout !== null) clearTimeout(abortTimeout);
+          tire(elm).remove();
+          try { delete window[name]; }
+          catch (e) { window[name] = undefined; }
+        }
+      , abort = function (error) {
+          cleanUp();
+          if (error === 'timeout') window[name] = noop;
+          if (tire.isFunction(options.error)) options.error(error, options);
+        };
+  
+    elm.onerror = function () {
+      abort('error');
+    };
+  
+    if (options.timeout > 0) {
+      abortTimeout = setTimeout(function () {
+        abort('timeout');
+      }, options.timeout);
+    }
+  
+    window[name] = function (data) {
+      tire(elm).remove();
+      try { delete window[name]; }
+      catch (e) { window[name] = undefined; }
+      tire.ajaxSuccess(data, null, options);
+    };
+  
+    options.data = tire.param(options.data);
+    elm.src = url.replace(/\=\?/, '=' + name);
+    tire('head')[0].appendChild(elm);
+  }
+  
+  tire.extend({
+  
+    /**
+     * Ajax method to create ajax request with XMLHTTPRequest (or ActiveXObject).
+     * Support for JSONP. Cross domain via plugin.
+     *
+     * @param {String|Object} url
+     * @param {Object|Function} options
+     * @return {Object}
+     */
+  
+    ajax: function (url, options) {
+      options = options || tire.ajaxSettings;
+  
+      if (tire.isObject(url)) {
+        if (tire.isFunction(options)) {
+          url.success = url.success || options;
+        }
+        options = url;
+        url = options.url;
+      }
+  
+      if (tire.isFunction(options)) options = { success: options };
+  
+      for (var opt in tire.ajaxSettings) {
+        if (!options.hasOwnProperty(opt)) {
+          options[opt] = tire.ajaxSettings[opt];
+        }
+      }
+  
+      if (!url) return options.xhr();
+  
+      var xhr = options.xhr()
+        , error = 'error'
+        , abortTimeout = null
+        , jsonp = options.dataType === 'jsonp'
+        , mime = {
+            html: 'text/html',
+            text: 'text/plain',
+            xml: 'application/xml, text/xml',
+            json: 'application/json'
+          }
+        , params = tire.param(options.data) !== '' ? tire.param(options.data) : null;
+  
+      for (var k in mime) {
+        if (url.indexOf('.' + k) !== -1 && !options.dataType) options.dataType = k;
+      }
+  
+      // test for jsonp
+      if (jsonp || /\=\?|callback\=/.test(url)) {
+        if (!/\=\?/.test(url)) url = (url + '&callback=?').replace(/[&?]{1,2}/, '?');
+        return ajaxJSONP(url, options);
+      }
+  
+      if (tire.isFunction(options.beforeOpen)) {
+        var bc = options.beforeOpen(xhr, options);
+        if (!bc) {
+          xhr.abort();
+          return xhr;
+        }
+        xhr = bc;
+      }
+  
+      if (xhr) {
+        xhr.open(options.type, url, true);
+  
+        if ((mime = mime[options.dataType.toLowerCase()]) !== undefined) {
+          xhr.setRequestHeader('Accept', mime);
+          if (mime.indexOf(',') !== -1) mime = mime.split(',')[0];
+          if (xhr.overrideMimeType) xhr.overrideMimeType(mime);
+        }
+  
+        if (options.contentType || options.data && options.type !== 'GET') {
+          xhr.setRequestHeader('Content-Type', (options.contentType || 'application/x-www-form-urlencoded'));
+        }
+  
+        for (var key in options.headers) {
+          if (options.headers.hasOwnProperty(key)) {
+            xhr.setRequestHeader(key, options.headers[key]);
+          }
+        }
+  
+        if (options.timeout > 0) {
+          abortTimeout = setTimeout(function () {
+            error = 'timeout';
+            xhr.abort();
+          }, options.timeout);
+        }
+  
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 304) {
+              if (options.success !== undefined) {
+                tire.ajaxSuccess(null, xhr, options);
+              }
+            } else if (options.error !== undefined) {
+              if (abortTimeout !== null) clearTimeout(abortTimeout);
+              options.error(error, options, xhr);
+            }
+          }
+        };
+  
+        if (tire.isFunction(options.beforeSend)) {
+          var bs = options.beforeSend(xhr, options);
+          if (bs !== false) {
+            xhr.send(params);
+          }
+          xhr = bs;
+        } else {
+          xhr.send(params);
+        }
+  
+        return xhr;
+      }
+    },
+  
+    /**
+     * Default ajax settings.
+     */
+  
+    ajaxSettings: {
+  
+      // Modify the xhr object before open it. Default is null.
+      beforeOpen: null,
+  
+      // Modify the xhr object before send. Default is null.
+      beforeSend: null,
+  
+      // Tell server witch content type it is.
+      contentType: 'application/x-www-form-urlencoded',
+  
+      // Data that is send to the server.
+      data: {},
+  
+      // The type of the data.
+      // Can be: json, jsonp, html, text, xml.
+      dataType: '',
+  
+      // Error function that is called on failed request.
+      // Take to arguments, xhr and the options object.
+      error: noop,
+  
+      // An object of additional header key/value pairs to send along with the request
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+  
+      // Function that runs on a successful request.
+      // Takes on argument, the response.
+      success: noop,
+  
+      // Set a timeout (in milliseconds) for the request.
+      timeout: 0,
+  
+      // The type of the request. Default is GET.
+      type: 'GET',
+  
+      // The url to make request to. If empty no request will be made.
+      url: '',
+  
+      // ActiveXObject when available (IE), otherwise XMLHttpRequest.
+      xhr: function () {
+        var xhr = null;
+        if (window.XMLHttpRequest) {
+          xhr = new XMLHttpRequest();
+        } else if (window.ActiveXObject) { // < IE 9
+          xhr = new ActiveXObject('Microsoft.XMLHTTP');
+        }
+        return xhr;
+      }
+    },
+  
+    /**
+     * Ajax success. Check if the dataType is JSON and try to parse it or just return the response text/xml.
+     *
+     * @param {Object} data
+     * @param {Object} xhr
+     * @param {Object} options
+     *
+     * @return {Object}
+     */
+  
+    ajaxSuccess: function (data, xhr, options) {
+      var res;
+      if (xhr) {
+        if ((options.dataType === 'json' || false) && (res = tire.parseJSON(xhr.responseText)) === null) res = xhr.responseText;
+        if (options.dataType === 'xml') res = xhr.responseXML;
+        res = res || xhr.responseText;
+      }
+      if (!res && data) res = data;
+      if (tire.isFunction(options.success)) options.success(res);
+    },
+  
+    /**
+     * Create a serialized representation of an array or object.
+     *
+     * @param {Array|Object} obj
+     * @param {Obj} prefix
+     * @return {String}
+     */
+  
+    param: function (obj, prefix) {
+      var str = [];
+      this.each(obj, function (p, v) {
+        var k = prefix ? prefix + '[' + p + ']' : p;
+        str.push(tire.isObject(v) ? tire.param(v, k) : encodeURIComponent(k) + '=' + encodeURIComponent(v));
+      });
+      return str.join('&').replace('%20', '+');
+    }
+  });
+  
   tire.fn.extend({
   
     /**
@@ -785,7 +1059,7 @@
     children: function (selector) {
       var children = [];
       this.each(function () {
-        tire.each(tire.slice.call(this.children, 0), function (index, value) {
+        tire.each(slice.call(this.children, 0), function (index, value) {
           children.push(value);
         });
       });
@@ -1005,12 +1279,25 @@
     }
   });
   var _eventId = 1
-    , c = {};
+    , c = {}
+    , returnTrue = function () { return true; }
+    , returnFalse = function () { return false; }
+    , ignoreProperties = /^([A-Z]|layer[XY]$)/
+    , mouse = {
+        mouseenter: 'mouseover',
+        mouseleave: 'mouseout'
+      }
+    , eventMethods = {
+        preventDefault: 'isDefaultPrevented',
+        stopImmediatePropagation: 'isStopImmediatePropagation',
+        stopPropagation: 'isPropagationStopped'
+      };
   
   /**
    * Get tire event id
    *
    * @param {Object} element The element to get tire event id from
+   *
    * @return {Integer}
    */
   
@@ -1022,37 +1309,76 @@
    * Get event handlers
    *
    * @param {Integer} id
-   * @param {String} eventName
+   * @param {String} event
+   *
    * @return {Array}
    */
   
-  function getEventHandlers (id, eventName) {
+  function getEventHandlers (id, event) {
     c[id] = c[id] || {};
-    return c[id][eventName] = c[id][eventName] || [];
+    return c[id][event] = c[id][event] || [];
   }
   
   /**
    * Create event handler
    *
    * @param {Object} element
-   * @param {String} eventName
+   * @param {String} event
    * @param {Function} callback
+   * @param {Function} _callback Orginal callback if delegated event
    */
   
-  function createEventHandler (element, eventName, callback) {
+  function createEventHandler (element, event, callback, _callback) {
     var id = getEventId(element)
-      , handlers = getEventHandlers(id, eventName);
+      , handlers = getEventHandlers(id, event)
+      , parts = ('' + event).split('.')
+      , cb = _callback || callback;
   
     var fn = function (event) {
-      if (callback.call(element, event) === false) {
-        event.preventDefault();
-        event.stopPropagation();
+      var data = event.data;
+      if (tire.isString(data) && /^[\[\{]/.test(data)) data = tire.parseJSON(event.data);
+      var result = callback.apply(element, [event].concat(data));
+      if (result === false) {
+        if (event.stopPropagation) event.stopPropagation();
+        if (event.preventDefault) event.preventDefault();
+        event.cancelBubble = true;
+        event.returnValue = false;
       }
+      return result;
     };
   
-    fn.guid = callback.guid = callback.guid || ++_eventId;
+    fn._i = cb._i = cb._i || ++_eventId;
+    fn.realEvent = parts[0];
+    fn.ns = parts.slice(1).sort().join(' ');
     handlers.push(fn);
     return fn;
+  }
+  
+  /**
+   * Create event proxy for delegated events.
+   *
+   * @param {Object} event
+   *
+   * @return {Object}
+   */
+  
+  function createProxy (event) {
+    var proxy = { originalEvent: event };
+  
+    for (var key in event) {
+      if (!ignoreProperties.test(key) && event[key] !== undefined) {
+        proxy[key] = event[key];
+      }
+      for (var name in eventMethods) {
+        proxy[name] = function () {
+          this[eventMethods[name]] = returnTrue;
+          return event[name].apply(event, arguments);
+        };
+        proxy[eventMethods[name]] = returnFalse;
+      }
+    }
+  
+    return proxy;
   }
   
   /**
@@ -1060,60 +1386,126 @@
    * Using addEventListener or attachEvent (IE)
    *
    * @param {Object} element
-   * @param {String} eventName
+   * @param {String} events
    * @param {Function} callback
+   * @param {String} selector
    */
   
-  function addEvent (element, eventName, callback) {
-    var handler = createEventHandler(element, eventName, callback);
+  function addEvent (element, events, callback, selector) {
+    var fn, _callback;
   
-    if (element.addEventListener) {
-      element.addEventListener(eventName, handler, false);
-    } else if (element.attachEvent) {
-      element.attachEvent('on' + eventName, handler);
+    if (tire.isString(selector)) {
+      _callback = callback;
+      fn = function () {
+        return (function (element, callback, selector) {
+          return function (e) {
+            var match = tire(e.target || e.srcElement).closest(selector, element).get(0)
+              , event;
+  
+            if ((e.target || e.srcElement) === match) {
+              event = tire.extend(createProxy(e), {
+                currentTarget: match,
+                liveFired: element
+              });
+              return callback.apply(match, [event].concat(slice.call(arguments, 1)));
+            }
+          };
+        }(element, callback, selector));
+      };
+    } else {
+      callback = selector;
+      selector = undefined;
     }
+  
+    tire.each(events.split(/\s/), function (index, event) {
+      var parts = (event + '').split('.');
+  
+      if (_callback !== undefined && parts[0] in mouse) {
+        var _fn = fn();
+        fn = function () {
+          return function (e) {
+            var related = e.relatedTarget;
+            if (!related || (related !== this && !tire.contains(this, related))) {
+              return _fn.apply(this, arguments);
+            }
+          }
+        }
+      }
+  
+      event = mouse[parts[0]] || parts[0];
+  
+      var handler = createEventHandler(element, event, fn && fn() || callback, _callback);
+  
+      if (selector) handler.selector = selector;
+  
+      if (element.addEventListener) {
+        element.addEventListener(event, handler, false);
+      } else if (element.attachEvent) {
+        element.attachEvent('on' + event, handler);
+      }
+    });
+  }
+  
+  /**
+   * Test event handler
+   *
+   * @param {Object} parts
+   * @param {Function} callback
+   * @param {String} selector
+   * @param {Function} handler
+   */
+  
+  function testEventHandler (parts, callback, selector, handler) {
+    var ns = parts.slice(1).sort().join(' ');
+  
+    return callback === undefined &&
+      (handler.selector === selector ||
+        handler.realEvent === parts[0] ||
+        handler.ns === ns) ||
+        callback._i === handler._i;
   }
   
   /**
    * Remove event to element, no support for undelegate yet.
    * Using removeEventListener or detachEvent (IE)
    *
+   * @todo Remove delegated events
+   *
    * @param {Object} element
-   * @param {String} eventName
-   * @param {Function} callback (optional)
+   * @param {String} events
+   * @param {Function} callback
+   * @param {String} selector
    */
   
-  function removeEvent (element, eventName, callback) {
-    var id = getEventId(element)
-      , handlers = getEventHandlers(id, eventName);
+  function removeEvent (element, events, callback, selector) {
+    var id = getEventId(element);
   
-    for (var i = 0; i < handlers.length; i++) {
-      if (callback === undefined || callback.guid === handlers[i].guid) {
-        if (element.removeEventListener) {
-          element.removeEventListener(eventName, handlers[i], false);
-        } else if (element.detachEvent) {
-          var name = 'on' + eventName;
-          if (tire.isString(element[name])) element[name] = null;
-          element.detachEvent(name, handlers[i]);
-        }
-        c[id][eventName].remove(i, 1);
-      }
+    if (callback === undefined && tire.isFunction(selector)) {
+      callback = selector;
+      selector = undefined;
     }
   
-    delete c[id];
-  }
+    tire.each(events.split(/\s/), function (index, event) {
+      var parts = ('' + event).split('.');
+      event = mouse[parts[0]] || parts[0];
+      var handlers = getEventHandlers(id, event);
   
-  /**
-   * Run callback for each event name
-   *
-   * @param {String} eventName
-   * @param {Function} callback
-   */
-  
-  function eachEvent(eventName, callback) {
-    tire.each(eventName.split(' '), function (index, name) {
-      callback(name);
+      for (var i = 0; i < handlers.length; i++) {
+        if (testEventHandler(parts, callback, selector, handlers[i])) {
+          if (element.removeEventListener) {
+            element.removeEventListener(event, handlers[i], false);
+          } else if (element.detachEvent) {
+            var name = 'on' + event;
+            if (tire.isString(element[name])) element[name] = null;
+            element.detachEvent(name, handlers[i]);
+          }
+          Array.remove(c[id][event], i, 1);
+        }
+      }
+      if (!c[id][event].length) delete c[id][event];
     });
+    for (var k in c[id]) return;
+    delete c[id];
   }
   
   tire.events = tire.events || {};
@@ -1123,34 +1515,30 @@
     /**
      * Add event to element
      *
-     * @param {String} eventName
+     * @param {String} events
+     * @param {String} selector
      * @param {Function} callback
      * @return {Object}
      */
   
-    on: function (eventName, callback) {
+    on: function (events, selector, callback) {
       return this.each(function () {
-        var self = this;
-        eachEvent(eventName, function (name) {
-          addEvent(self, name, callback);
-        });
+        addEvent(this, events, callback, selector);
       });
     },
   
     /**
      * Remove event from element
      *
-     * @param {String} eventName
-     * @param {Function} callback (optional)
+     * @param {String} events
+     * @param {String} selector
+     * @param {Function} callback
      * @return {Object}
      */
   
-    off: function (eventName, callback) {
+    off: function (events, selector, callback) {
       return this.each(function () {
-        var self = this;
-        eachEvent(eventName, function (name) {
-          removeEvent(self, name, callback);
-        });
+        removeEvent(this, events, callback, selector);
       });
     },
   
@@ -1167,7 +1555,10 @@
         if (elm === document && !elm.dispatchEvent) elm = document.documentElement;
   
         var event
-          , createEvent = !!document.createEvent;
+          , createEvent = !!document.createEvent
+          , parts = (eventName + '').split('.');
+  
+        eventName = mouse[parts[0]] || parts[0];
   
         if (createEvent) {
           event = document.createEvent('HTMLEvents');
@@ -1179,6 +1570,10 @@
   
         event.data = data || {};
         event.eventName = eventName;
+  
+        if (tire.isString(event.data) && !tire.isString(data) && JSON.stringify) {
+          event.data = JSON.stringify(data);
+        }
   
         if (createEvent) {
           elm.dispatchEvent(event);
@@ -1203,182 +1598,8 @@
     }
   
   });
-  /**
-   * Create a JSONP request
-   *
-   * @param {String} url
-   * @param {Object} options
-   */
-  
-  function ajaxJSONP(url, options) {
-    var name = (name = /callback\=([A-Za-z0-9\-\.]+)/.exec(url)) ? name[1] : 'jsonp' + (+new Date())
-      , elm = document.createElement('script');
-  
-    elm.onerror = function () {
-      tire(elm).remove();
-      try { delete window[name]; }
-      catch (e) { window[name] = undefined; }
-      if (tire.isFun(options.error)) options.error('abort');
-    };
-    
-    window[name] = function (data) {
-      tire(elm).remove();
-      try { delete window[name]; }
-      catch (e) { window[name] = undefined; }
-      ajaxSuccess(data, null, options);
-    };
-    
-    options.data = tire.param(options.data);
-    elm.src = url.replace(/\=\?/, '=' + name);
-    tire('head')[0].appendChild(elm);
-  }
-  
-  /**
-   * Ajax success. Check if the dataType is JSON and try to parse it or just return the response text/xml.
-   *
-   * @param {Object} data
-   * @param {Object} xhr
-   * @param {Object} options
-   * @return {Object}
-   */
-  
-  function ajaxSuccess(data, xhr, options) {
-    var res;
-    if (xhr) {
-      if ((options.dataType === 'json' || false) && (res = tire.parseJSON(xhr.responseText)) === null) res = xhr.responseText;
-      if (options.dataType === 'xml') res = xhr.responseXML;
-      res = res || xhr.responseText;
-    }
-    if (!res && data) res = data;
-    if (tire.isFunction(options.success)) options.success(res);
-  }
-          
-  tire.fn.extend({
-    
-    /**
-     * Ajax method to create ajax request with XMLHTTPRequest (or ActiveXObject).
-     * Supports JSONP, no cross domain yet.
-     *
-     * @param {String|Object} url
-     * @param {Object|Function} options
-     * @return {Object}
-     */
-    
-    ajax: function (url, options) {
-      options = options || {};
-      
-      if (tire.isObject(url)) {
-        if (tire.isFunction(options)) {
-          url.success = url.success || options;
-        }
-        options = url;
-        url = options.url;
-      }
-      
-      if (tire.isFunction(options)) options = { success: options };
-      
-      options.dataType = (options.dataType || '').toLowerCase();
-          
-      // won't do anything without a url
-      if (!url) return;
-      
-      var self = this
-        , method = (options.type || 'GET').toUpperCase()
-        , params = options.data || null
-        , jsonp = options.dataType === 'jsonp' || false
-        , xhr
-        , mime = { // support for script needed
-            html: 'text/html',
-            text: 'text/plain',
-            xml: 'application/xml, text/xml',
-            json: 'application/json'
-        };
-      
-      if (window.XMLHttpRequest) {
-        xhr = new XMLHttpRequest();
-      } else if (window.ActiveXObject) { // < IE 9
-        xhr = new ActiveXObject('Microsoft.XMLHTTP');
-      }
-      
-      for (var k in mime) {
-        if (url.indexOf('.' + k) !== -1 && !options.dataType) options.dataType = k;
-      }
-      
-      // test for jsonp
-      if (jsonp || /\=\?|callback\=/.test(url)) {
-        if (!/\=\?/.test(url)) url = (url + '&callback=?').replace(/[&?]{1,2}/, '?');
-        ajaxJSONP(url, options);
-        return this;
-      }
-      
-      if (xhr) {
-        xhr.queryString = params;
-        xhr.open(method, url, true);
-        xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
-        
-        if ((mime = mime[options.dataType]) !== undefined) {
-          xhr.setRequestHeader('Accept', mime);
-          if (mime.indexOf(',') !== -1) mime = mime.split(',')[0];
-          if (xhr.overrideMimeType) xhr.overrideMimeType(mime);
-        }
-        
-        if (options.contentType || options.data && method !== 'GET') {
-          xhr.setRequestHeader('Content-Type', (options.contentType || 'application/x-www-form-urlencoded'));
-        }
-  
-        for (var key in options.headers) {
-          if (options.headers.hasOwnProperty(key)) {
-            xhr.setRequestHeader(key, options.headers[key]);
-          }
-        }
-        
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 304) {
-              if (options.success !== undefined) {
-                ajaxSuccess(null, xhr, options);
-              }
-            } else if (options.error !== undefined) {
-              options.error(xhr, options);
-            }
-          }
-        };
-        
-        xhr.send(tire.param(params));
-      }
-  
-      return this;
-    }
-  });
-  
-  tire.extend({
-    ajax: tire.fn.ajax,
-    
-    /**
-     * Create a serialized representation of an array or object.
-     *
-     * @param {Array|Object} obj
-     * @param {Obj} prefix
-     * @return {String}
-     */
-    
-    param: function (obj, prefix) {
-      var str = [];
-      this.each(obj, function (p, v) {
-        var k = prefix ? prefix + '[' + p + ']' : p;
-        str.push(tire.isObject(v) ? tire.param(v, k) : encodeURIComponent(k) + '=' + encodeURIComponent(v));
-      });
-      return str.join('&').replace('%20', '+');
-    }
-  });
 
   // Expose tire to the global object
   window.$ = window.tire = tire;
-
-  // Expose tire as amd module
-  if (typeof define === 'function' && define.amd) {
-    define('tire', [], function () {
-      return tire;
-    });
-  }
+  
 }(window));
