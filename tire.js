@@ -1,11 +1,12 @@
 /*!
  * tire.js
  * Copyright (c) 2012-2013 Fredrik Forsmo
- * Version: 1.2.0
+ * Version: 1.3.1
  * Released under the MIT License.
  *
- * Date: 2013-05-24
+ * Date: 2013-11-05
  */
+
 (function (window, undefined) {
 
   var document   = window.document
@@ -16,24 +17,19 @@
     , tagNameExp = /^[\w\-]+$/
     , tagExp     = /^<([\w:]+)/
     , slice      = [].slice
+    , splice     = [].splice
     , noop       = function () {};
-  
-  // Array Remove - By John Resig (MIT Licensed)
-  Array.remove = function(array, from, to) {
-    var rest = array.slice((to || from) + 1 || array.length);
-    array.length = from < 0 ? array.length + from : from;
-    return array.push.apply(array, rest);
-  };
   
   // If slice is not available we provide a backup
   try {
-    slice.call(document.documentElement.childNodes, 0)[0].nodeType;
+    slice.call(document.childNodes);
   } catch(e) {
-    slice = function (i) {
+    slice = function (i, e) {
       i = i || 0;
-      var elem, results = [];
-      for (; (elem = this[i]); i++) {
-        results.push(elem);
+      var el, results = [];
+      for (; (el = this[i]); i++) {
+        if (i === e) break;
+        results.push(el);
       }
       return results;
     };
@@ -73,7 +69,7 @@
      */
   
     find: function (selector, context) {
-      var elms = [], attrs;
+      var els = [], attrs;
   
       if (!selector) {
         return this;
@@ -101,43 +97,45 @@
         context = document;
       }
   
+      if (context instanceof tire) {
+        context = context.context;
+      }
+  
       if (tire.isString(selector)) {
         this.selector = selector;
         if (idExp.test(selector) && context.nodeType === context.DOCUMENT_NODE) {
-          elms = (elms = context.getElementById(selector.substr(1))) ? [elms] : [];
+          els = (els = context.getElementById(selector.substr(1))) ? [els] : [];
         } else if (context.nodeType !== 1 && context.nodeType !== 9) {
-          elms = [];
+          els = [];
         } else if (tagExp.test(selector)) {
-          var tmp = context.createElement('div');
-          tmp.innerHTML = selector;
-          this.each.call(slice.call(tmp.childNodes, 0), function () {
-            elms.push(this);
+          tire.each(normalize(selector), function () {
+            els.push(this);
           });
         } else {
-          elms = slice.call(
+          els = slice.call(
             classExp.test(selector) && context.getElementsByClassName !== undefined ? context.getElementsByClassName(selector.substr(1)) :
             tagNameExp.test(selector) ? context.getElementsByTagName(selector) :
             context.querySelectorAll(selector)
           );
         }
       } else if (selector.nodeName || selector === window) {
-        elms = [selector];
+        els = [selector];
       } else if (tire.isArray(selector)) {
-        elms = selector;
+        els = selector;
       }
   
       if (selector.selector !== undefined) {
         this.selector = selector.selector;
         this.context = selector.context;
       } else if (this.context === undefined) {
-        if (elms[0] !== undefined && !tire.isString(elms[0])) {
-          this.context = elms[0];
+        if (els[0] !== undefined && !tire.isString(els[0])) {
+          this.context = els[0];
         } else {
           this.context = document;
         }
       }
   
-      return this.set(elms).each(function () {
+      return this.set(els).each(function () {
         return attrs && tire(this).attr(attrs);
       });
     },
@@ -177,8 +175,12 @@
           if (callback.call(target[i], i, target[i]) === false) break;
         }
       } else {
-        for (key in target) {
-          if (target.hasOwnProperty(key) && callback.call(target[key], key, target[key]) === false) break;
+        if (target instanceof tire) {
+          return tire.each(slice.call(target), callback);
+        } else if (tire.isObject(target)) {
+          for (key in target) {
+            if (target.hasOwnProperty(key) && callback.call(target[key], key, target[key]) === false) break;
+          }
         }
       }
   
@@ -194,14 +196,14 @@
   
     set: function (elements) {
       // Introduce a fresh `tire` set to prevent context from being overridden
-      var i = 0, newSet = tire();
-      newSet.selector = this.selector;
-      newSet.context = this.context;
+      var i = 0, set = tire();
+      set.selector = this.selector;
+      set.context = this.context;
       for (; i < elements.length; i++) {
-        newSet[i] = elements[i];
+        set[i] = elements[i];
       }
-      newSet.length = i;
-      return newSet;
+      set.length = i;
+      return set;
     }
   };
   
@@ -218,7 +220,7 @@
   
     if (arguments.length === 1) target = this;
   
-    tire.fn.each(slice.call(arguments), function (index, value) {
+    tire.fn.each(slice.call(arguments), function (i, value) {
       for (var key in value) {
         if (target[key] !== value[key]) target[key] = value[key];
       }
@@ -232,7 +234,7 @@
   tire.extend({
   
     // The current version of tire being used
-    version: '1.2.0',
+    version: '1.3.1',
   
     // We sould be able to use each outside
     each: tire.fn.each,
@@ -264,26 +266,26 @@
     /**
      * Check if the element matches the selector
      *
-     * @param {Object} element
+     * @param {Object} el
      * @param {String} selector
      * @return {Boolean}
      */
   
-    matches: function (element, selector) {
-      if (!element || element.nodeType !== 1) return false;
+    matches: function (el, selector) {
+      if (!el || el.nodeType !== 1) return false;
   
       // Trying to use matchesSelector if it is available
-      var matchesSelector = element.webkitMatchesSelector || element.mozMatchesSelector || element.oMatchesSelector || element.matchesSelector;
+      var matchesSelector = el.webkitMatchesSelector || el.mozMatchesSelector || el.oMatchesSelector || el.matchesSelector;
       if (matchesSelector) {
-        return matchesSelector.call(element, selector);
+        return matchesSelector.call(el, selector);
       }
   
       // querySelectorAll fallback
       if (document.querySelectorAll !== undefined) {
-        var nodes = element.parentNode.querySelectorAll(selector);
+        var nodes = el.parentNode.querySelectorAll(selector);
   
         for (var i = 0; i < nodes.length; i++) {
-          if (nodes[i] === element) return true;
+          if (nodes[i] === el) return true;
         }
       }
   
@@ -396,6 +398,24 @@
     },
   
     /**
+     * Check if given value exists in the array or not.
+     *
+     * @param {Object|String} val
+     * @param {Array} arr
+     * @param {Number} i
+     * @return {Boolean}
+     */
+  
+    inArray: function (val, arr, i) {
+      return Array.prototype.indexOf ? arr.indexOf(val, i) : function () {
+          var l = arr.length;
+          i = i ? i < 0 ? Math.max(0, l + i) : i : 0;
+          for (; i < l; i++) if (i in arr && arr[i] === val) return true;
+          return -1;
+        }();
+    },
+  
+    /**
      * Calling .noConflict will restore the window.$` to its previous value.
      *
      * @param {Boolean} name Restore `tire` to it's previous value.
@@ -420,11 +440,11 @@
   
   function ajaxJSONP (url, options) {
     var name = (name = /callback\=([A-Za-z0-9\-\.]+)/.exec(url)) ? name[1] : 'jsonp' + (+new Date())
-      , elm = document.createElement('script')
+      , el = document.createElement('script')
       , abortTimeout = null
       , cleanUp = function () {
           if (abortTimeout !== null) clearTimeout(abortTimeout);
-          tire(elm).remove();
+          tire(el).remove();
           try { delete window[name]; }
           catch (e) { window[name] = undefined; }
         }
@@ -434,7 +454,7 @@
           if (tire.isFunction(options.error)) options.error(error, options);
         };
   
-    elm.onerror = function () {
+    el.onerror = function () {
       abort('error');
     };
   
@@ -445,15 +465,15 @@
     }
   
     window[name] = function (data) {
-      tire(elm).remove();
+      tire(el).remove();
       try { delete window[name]; }
       catch (e) { window[name] = undefined; }
       tire.ajaxSuccess(data, null, options);
     };
   
     options.data = tire.param(options.data);
-    elm.src = url.replace(/\=\?/, '=' + name);
-    tire('head')[0].appendChild(elm);
+    el.src = url.replace(/\=\?/, '=' + name);
+    tire('head')[0].appendChild(el);
   }
   
   tire.extend({
@@ -498,7 +518,7 @@
             xml: 'application/xml, text/xml',
             json: 'application/json'
           }
-        , params = tire.param(options.data) !== '' ? tire.param(options.data) : null;
+        , params = tire.param(options.data) !== '' ? tire.param(options.data) : options.data;
   
       for (var k in mime) {
         if (url.indexOf('.' + k) !== -1 && !options.dataType) options.dataType = k;
@@ -653,7 +673,7 @@
      * Create a serialized representation of an array or object.
      *
      * @param {Array|Object} obj
-     * @param {Obj} prefix
+     * @param {Object} prefix
      * @return {String}
      */
   
@@ -677,13 +697,13 @@
   
     addClass: function (value) {
       if (value && tire.isString(value)) {
-        return this.each(function (index, elm) {
-          if (elm.nodeType === 1) {
+        return this.each(function (index, el) {
+          if (el.nodeType === 1) {
             var classNames = value.split(/\s+/);
-            if (!elm.className && classNames.length === 1) {
-              elm.className = value;
+            if (!el.className && classNames.length === 1) {
+              el.className = value;
             } else {
-              var className = elm.className;
+              var className = el.className;
   
               for (var i = 0; i < classNames.length; i++) {
                 if (className.indexOf(classNames[i]) === -1) {
@@ -691,7 +711,7 @@
                 }
               }
   
-              elm.className = tire.trim(className);
+              el.className = tire.trim(className);
             }
           }
         });
@@ -705,22 +725,22 @@
      */
   
     removeClass: function (value) {
-      return this.each(function (index, elm) {
+      return this.each(function (index, el) {
         if (value && tire.isString(value)) {
           var classNames = value.split(/\s+/);
-          if (elm.nodeType === 1 && elm.className) {
+          if (el.nodeType === 1 && el.className) {
             if (classNames.length === 1) {
-             elm.className = elm.className.replace(value, '');
+             el.className = el.className.replace(value, '');
             } else {
               for (var i = 0; i < classNames.length; i++) {
-                elm.className = elm.className.replace(classNames[i], '');
+                el.className = el.className.replace(classNames[i], '');
               }
             }
   
-            elm.className = tire.trim(elm.className.replace(/\s{2}/g, ' '));
+            el.className = tire.trim(el.className.replace(/\s{2}/g, ' '));
   
-            if (elm.className === '') {
-              elm.removeAttribute('class');
+            if (el.className === '') {
+              el.removeAttribute('class');
             }
           }
         }
@@ -789,7 +809,7 @@
             continue;
           }
         }
-        return attribute;
+        return attribute || undefined;
       }
     },
   
@@ -868,15 +888,6 @@
      * Get css property
      * Set css properties
      *
-     * Examples:
-     *
-     *  // Get property
-     *  $('div').css('color'); will return the css property
-     *
-     *  // Set properties
-     *  $('div').css('color', 'black');
-     *  $('div').css({ color: 'black', backgroundColor: 'white' });
-     *
      * @param {String|Object} prop
      * @param {String} value
      * @return {String|Object}
@@ -928,16 +939,21 @@
     }
   });
   
-  function getPropertyValue(elm, prop) {
+  function getPropertyValue(el, prop) {
     var value = '';
     if (document.defaultView && document.defaultView.getComputedStyle) {
       prop = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
-      value = document.defaultView.getComputedStyle(elm, '').getPropertyValue(prop);
-    } else if (elm.currentStyle) {
-      value = elm.currentStyle[prop];
-    } else {
-      value = elm.style[prop];
+      value = document.defaultView.getComputedStyle(el, '').getPropertyValue(prop);
     }
+  
+    if (!!value && value.length) {
+      value = value;
+    } else if (el.currentStyle) {
+      value = el.currentStyle[prop] || el.style[prop];
+    } else {
+      value = el.style[prop];
+    }
+  
     return !!value ? value : '';
   }
   var domReady = (function () {
@@ -1002,8 +1018,759 @@
    */
   
   tire.ready = tire.fn.ready = domReady;
+  tire.fn.extend({
+  
+    /**
+     * Filter element collection
+     *
+     * @param {String|Function} obj
+     * @return {Object}
+     */
+  
+    filter: function (obj) {
+      if (tire.isFunction(obj)) {
+        var els = [];
+        this.each(function (index, el) {
+          if (obj.call(el, index)) {
+            els.push(el);
+          }
+        });
+        return tire(els);
+      } else {
+        return this.filter(function () {
+          return tire.matches(this, obj);
+        });
+      }
+    },
+  
+    /**
+     * Get elements in list but not with this selector
+     *
+     * @param {String} selector
+     * @return {Object}
+     */
+  
+    not: function (selector) {
+      return this.filter(function () {
+        return !tire.matches(this, selector);
+      });
+    },
+  
+    /**
+     * Get the element at position specified by index from the current collection.
+     *
+     * @param {Number} index
+     * @return {Object}
+     */
+  
+    eq: function (index) {
+      return index === -1 ? tire(slice.call(this, this.length -1)) : tire(slice.call(this, index, index + 1));
+    },
+  
+    /**
+     * Retrieve the DOM elements matched by the tire object.
+     *
+     * @param {Number} index
+     * @return {object}
+     */
+  
+    get: function (index) {
+      return index === undefined ? slice.call(this) : this[index >= 0 ? index : index + this.length];
+    },
+  
+    /**
+     * Clone elements
+     *
+     * @return {Object}
+     */
+  
+    clone: function () {
+      var els = [];
+      this.each(function () {
+        els.push(this.cloneNode(true));
+      });
+      return tire(els);
+    },
+  
+    /**
+     * Toggle show/hide.
+     *
+     * @param {Boolean} state
+     * @return {Object}
+     */
+  
+    toggle: function (state) {
+      return this.each(function () {
+        var el = $(this);
+        el[(state === undefined ? el.css('display') === 'none' : state) ? 'show': 'hide']();
+      });
+    },
+  
+    /**
+     * Toggle class.
+     *
+     * @param {Function|String} name
+     * @param {Boolean} state
+     * @return {Object}
+     */
+  
+    toggleClass: function (name, state) {
+      return this.each(function (i) {
+        var el = $(this);
+        name = tire.isFunction(name) ? name.call(this, i, el.attr('class'), state) : tire.isString(name) ? name : '';
+        tire.each(name.split(/\s+/g), function (i, klass) {
+          el[(state === undefined ? !el.hasClass(klass) : state) ? 'addClass' : 'removeClass'](klass);
+        });
+      });
+    }
+  });
+  var _eventId = 1
+    , c = window.c = {}
+    , returnTrue = function () { return true; }
+    , returnFalse = function () { return false; }
+    , ignoreProperties = /^([A-Z]|layer[XY]$)/
+    , sepcialExp = /click|mouse/
+    , mouse = {
+        mouseenter: 'mouseover',
+        mouseleave: 'mouseout'
+      }
+    , eventMethods = {
+        preventDefault: 'isDefaultPrevented',
+        stopImmediatePropagation: 'isStopImmediatePropagation',
+        stopPropagation: 'isPropagationStopped'
+      }
+    , opcHandler
+    , opcCache = {}
+    , createEvent = !!document.createEvent;
+  
+  /**
+   * Get event parts.
+   *
+   * @param {String} event
+   *
+   * @return {Object}
+   */
+  
+  function getEventParts (event) {
+    var parts = ('' + event).split('.');
+    return { ev: parts[0], ns: parts.slice(1).sort().join(' ') };
+  }
+  
+  /**
+   * Get real event.
+   *
+   * @param {String} event
+   *
+   * @return {String}
+   */
+  
+  function realEvent (event) {
+    return mouse[event] || event;
+  }
+  
+  /**
+   * Get tire event id
+   *
+   * @param {Object} el The element to get tire event id from
+   *
+   * @return {Number}
+   */
+  
+  function getEventId (el) {
+    return el._eventId || (el._eventId = _eventId++);
+  }
+  
+  /**
+   * Check if ns or event allreday is in the handlers array.
+   *
+   * @param {Object} parts
+   * @param {Array} handlers
+   *
+   * @return {Boolean}
+   */
+  
+  function inHandlers (parts, handlers) {
+    for (var i = 0; i < handlers.length; i++) {
+      if (handlers[i].realEvent === realEvent(parts.ev) || handlers[i].ns === parts.ns) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  /**
+   * Get event handlers
+   *
+   * @param {Number} id
+   * @param {String} event
+   *
+   * @return {Array}
+   */
+  
+  function getEventHandlers (id, event) {
+    var parts = getEventParts(event)
+      , handlers = []
+      , tmp
+      , ns;
+  
+    event = realEvent(parts.ev);
+    ns = parts.ns;
+  
+    if (!event.length && !parts.ns.length) {
+      return handlers;
+    }
+  
+    c[id] = c[id] || {};
+  
+    if (event.length) {
+      handlers = c[id][event] = c[id][event] || [];
+    }
+  
+    if (parts.ns.length) {
+      for (event in c[id]) {
+        tmp = c[id][event];
+        for (var i = 0, l = tmp.length; i < l; i++) {
+          if (tmp[i] && ns.length && tmp[i].ns.length && tire.inArray(ns, tmp[i].ns.split(' ')) !== -1) {
+            handlers.push(tmp[i]);
+          }
+        }
+      }
+    }
+  
+    return handlers;
+  }
+  
+  /**
+   * Create event handler
+   *
+   * @param {Object} el
+   * @param {String} event
+   * @param {Function} callback
+   * @param {Function} _callback Orginal callback if delegated event
+   */
+  
+  function createEventHandler (el, event, callback, _callback) {
+    var id = getEventId(el)
+      , handlers = getEventHandlers(id, event)
+      , parts = getEventParts(event)
+      , cb = callback || _callback;
+  
+    var fn = function (event) {
+      if (!event.liveTarget) event.liveTarget = event.target || event.srcElement;
+      var data = event.data;
+      if (tire.isString(data) && /^[\[\{]/.test(data)) data = tire.parseJSON(event.data);
+      var result = cb.apply(el, [event].concat(data));
+      if (result === false) {
+        if (event.stopPropagation) event.stopPropagation();
+        if (event.preventDefault) event.preventDefault();
+      }
+      return result;
+    };
+    fn._i = cb._i = cb._i || ++_eventId;
+    fn.realEvent = realEvent(parts.ev);
+    fn.ns = parts.ns;
+    handlers.push(fn);
+    return fn;
+  }
+  
+  /**
+   * Create event proxy for delegated events.
+   *
+   * @param {Object} event
+   *
+   * @return {Object}
+   */
+  
+  function createProxy (event) {
+    var proxy = { originalEvent: event };
+  
+    for (var key in event) {
+      if (!ignoreProperties.test(key) && event[key] !== undefined) {
+        proxy[key] = event[key];
+      }
+      for (var name in eventMethods) {
+        proxy[name] = function () {
+          this[eventMethods[name]] = returnTrue;
+          return event[name].apply(event, arguments);
+        };
+        proxy[eventMethods[name]] = returnFalse;
+      }
+    }
+  
+    return proxy;
+  }
+  
+  /**
+   * Add event to element.
+   * Using addEventListener or attachEvent (IE)
+   *
+   * @param {Object} el
+   * @param {String} events
+   * @param {Function} callback
+   * @param {String} selector
+   */
+  
+  function addEvent (el, events, callback, selector) {
+    var fn, _callback;
+  
+    if (tire.isString(selector)) {
+      _callback = callback;
+      fn = function () {
+        return (function (el, callback, selector) {
+          return function (e) {
+            var match = tire(el).find(e.target || e.srcElement);
+            match = match.get(0) === el ? match.find(selector) : match;
+            if (match.is(selector)) {
+              var event = tire.extend(createProxy(e), {
+                currentTarget: match.get(0)
+              });
+  
+              return callback.apply(match, [event].concat(slice.call(arguments, 1)));
+            }
+          };
+        }(el, callback, selector));
+      };
+    } else {
+      callback = selector;
+      selector = undefined;
+    }
+  
+    tire.each(events.split(/\s/), function (index, event) {
+      var parts = getEventParts(event);
+  
+      if (_callback !== undefined && parts.ev in mouse) {
+        var _fn = fn();
+        fn = function () {
+          return function (e) {
+            var related = e.relatedTarget;
+            if (!related || (related !== this && !tire.contains(this, related))) {
+              return _fn.apply(this, arguments);
+            }
+          }
+        }
+      }
+  
+      var handler = createEventHandler(el, event, fn && fn() || callback, _callback);
+  
+      event = realEvent(parts.ev);
+  
+      if (selector) handler.selector = selector;
+  
+      if (el.addEventListener) {
+        el.addEventListener(event, handler, false);
+      } else if (el.attachEvent) {
+        el.attachEvent('on' + event, handler);
+      }
+    });
+  }
+  
+  /**
+   * Test event handler
+   *
+   * @param {Object} parts
+   * @param {Function} callback
+   * @param {String} selector
+   * @param {Function} handler
+   */
+  
+  function testEventHandler (parts, callback, selector, handler) {
+    return callback === undefined &&
+      (handler.selector === selector ||
+        handler.realEvent === parts.ev ||
+        handler.ns === parts.ns) ||
+        callback._i === handler._i;
+  }
+  
+  /**
+   * Remove event to element.
+   * Using removeEventListener or detachEvent (IE)
+   *
+   * @param {Object} el
+   * @param {String} events
+   * @param {Function} callback
+   * @param {String} selector
+   */
+  
+  function removeEvent (el, events, callback, selector) {
+    var id = getEventId(el);
+  
+    if (callback === undefined && tire.isFunction(selector)) {
+      callback = selector;
+      selector = undefined;
+    }
+  
+    tire.each(events.split(/\s/), function (index, event) {
+      var handlers = getEventHandlers(id, event)
+        , parts = getEventParts(event);
+  
+      event = realEvent(parts.ev);
+  
+      for (var i = 0; i < handlers.length; i++) {
+        if (testEventHandler(parts, callback, selector, handlers[i])) {
+          event = (event || handlers[i].realEvent);
+          if (el.removeEventListener) {
+            el.removeEventListener(event, handlers[i], false);
+          } else if (el.detachEvent) {
+            var name = 'on' + event;
+            if (tire.isString(el[name])) el[name] = null;
+            el.detachEvent(name, handlers[i]);
+            if (opcCache[el.nodeName]) { // Remove custom event handler on IE8.
+              el.detachEvent('onpropertychange', opcHandler);
+              delete opcCache[el.nodeName];
+            }
+          }
+          c[id][event] = splice.call(c[id][event], i, 1);
+          c[id][event].length = i < 0 ? c[id][event].length + 1 : i;
+        }
+      }
+      if (c[id] && c[id][event] && !c[id][event].length) delete c[id][event];
+    });
+    for (var k in c[id]) return;
+    delete c[id];
+  }
+  
+  tire.events = tire.events || {};
   
   tire.fn.extend({
+  
+    /**
+     * Add event to element
+     *
+     * @param {String} events
+     * @param {String} selector
+     * @param {Function} callback
+     * @return {Object}
+     */
+  
+    on: function (events, selector, callback) {
+      return this.each(function () {
+        addEvent(this, events, callback, selector);
+      });
+    },
+  
+    /**
+     * Remove event from element
+     *
+     * @param {String} events
+     * @param {String} selector
+     * @param {Function} callback
+     * @return {Object}
+     */
+  
+    off: function (events, selector, callback) {
+      return this.each(function () {
+        removeEvent(this, events, callback, selector);
+      });
+    },
+  
+    /**
+     * Trigger specific event for element collection
+     *
+     * @param {Object|String} eventName The event to trigger or event object
+     * @param {Object} data JSON Object to use as the event's `data` property
+     * @return {Object}
+     */
+  
+    trigger: function (event, data, _el) {
+      return this.each(function (i, el) {
+        if (el === document && !el.dispatchEvent) el = document.documentElement;
+  
+        var parts = getEventParts(event.type || event);
+  
+        event = tire.Event(event)
+        event.data = data || {};
+  
+        if (tire.isString(event.data) && !tire.isString(data) && JSON.stringify) {
+          event.data = JSON.stringify(data);
+        }
+  
+        if (createEvent) {
+          el.dispatchEvent(event);
+        } else {
+          if (el._eventId > 0) {
+            try { // fire event in < IE 9
+              el.fireEvent('on' + event.type, event);
+            } catch (e) { // solution to trigger custom events in < IE 9
+              if (!opcCache[el.nodeName]) {
+                opcHandler = opcHandler || function (ev) {
+                  if (ev.eventName && ev.srcElement._eventId) {
+                    var handlers = getEventHandlers(ev.srcElement._eventId, ev.eventName);
+                    if (handlers.length) {
+                      for (var i = 0, l = handlers.length; i < l; i++) {
+                        if (tire.isFunction(handlers[i])) handlers[i](ev);
+                      }
+                    }
+                  }
+                };
+                el.attachEvent('onpropertychange', opcHandler);
+              }
+              opcCache[el.nodeName] = opcCache[el.nodeName] || true;
+              el.fireEvent('onpropertychange', event);
+            }
+          }
+        }
+  
+        if (!event.isPropagationStopped()) {
+          var parent = el.parentNode || el.ownerDocument;
+          if (parent && parent._eventId > 0) {
+            // Tire use `liveTarget` instead of creating a own Event object that modifies `target` property.
+            event.liveTarget = el;
+            tire(parent).trigger(event, data);
+          } else {
+            event.stopPropagation();
+          }
+        }
+      });
+    }
+  
+  });
+  
+  /**
+   * Create a event object
+   *
+   * @param {String|Object} type
+   * @param {Object} props
+   *
+   * @return {Object}
+   */
+  
+  tire.Event = function (type, props) {
+    if (!tire.isString(type)) {
+      if (type.type) return type;
+      props = type;
+      type = props.type;
+    }
+  
+    var event;
+  
+    if (createEvent) {
+      event = document.createEvent((sepcialExp.test(type) ? 'Mouse' : '') + 'Events');
+      event.initEvent(realEvent(type), true, true, null, null, null, null, null, null, null, null, null, null, null, null);
+    } else {
+      event = document.createEventObject();
+      event.cancelBubble = true;
+    }
+  
+    if (props !== undefined) {
+      for (var name in props) {
+        (name === 'bubbles') ? (bubbles = !!props[name]) : (event[name] = props[name]);
+      }
+    }
+  
+    event.isPropagationStopped = returnFalse;
+    event.stopPropagation = function () {
+      this.isPropagationStopped = returnTrue;
+      var e = this.originalEvent;
+      if(!e) return;
+      if (e.stopPropagation) e.stopPropagation();
+      e.returnValue = false;
+    };
+  
+    event.isDefaultPrevented = returnTrue;
+    event.preventDefault = function () {
+      this.isDefaultPrevented = returnTrue;
+      var e = this.originalEvent;
+      if(!e) return;
+      if (e.preventDefault) e.preventDefault();
+      e.returnValue = false;
+    };
+  
+    if (!event.type.length) {
+      event.type = realEvent(type);
+    }
+  
+    // IE8
+    event.eventName = event.type;
+  
+    return event;
+  };
+  
+  var wrapTags = /^(select|fieldset|table|tbody|tfoot|td|tr|colgroup)$/i
+    , wrapMap = {
+        thead: ['<table>', '</table>', 1],
+        col: ['<table><colgroup>', '</colgroup></table>', 2],
+        tr: ['<table><tbody>', '</tbody></table>', 2],
+        td: ['<table><tbody><tr>', '</tr></tbody></table>', 3]
+      };
+  
+  wrapMap.tbody = wrapMap.tfoot = wrapMap.colgroup = wrapMap.caption = wrapMap.thead;
+  wrapMap.th = wrapMap.td;
+  
+  /**
+   * Check if given node is a node.
+   *
+   * @return {Boolean}
+   */
+  
+  function isNode (node) {
+    return node && node.nodeName && (node.nodeType === 1 || node.nodeType === 11);
+  }
+  
+  /**
+   * Collect the right nodes to work with.
+   *
+   * @return {Array}
+   */
+  
+  function normalize (node) {
+    if (node instanceof tire) {
+      var els = [];
+      node.each(function (i, el) {
+        el = normalize(el);
+        el = el ? el[0] : '';
+        els.push(el);
+      });
+      return els;
+    }
+    return tire.isString(node) ? wrap(node) : isNode(node) ? [node] : node;
+  }
+  
+  /**
+   * Wrap html string with a `div` or wrap special tags with their containers.
+   *
+   * @return {Array}
+   */
+  
+  function wrap (node) {
+    return typeof node === 'string' && node !== '' ? function () {
+      var tag = tagExp.exec(node)
+        , el = document.createElement('div')
+        , wrap = tag ? wrapMap[tag[1].toLowerCase()] : null
+        , level = wrap ? wrap[2] + 1 : 1;
+      el.innerHTML = wrap ? (wrap[0] + node + wrap[1]) : node;
+      while (level--) el = el.firstChild;
+      return [el];
+    }() : isNode(node) ? [node.cloneNode(true)] : [];
+  }
+  
+  /**
+   * Compare the given element node name with the given name.
+   *
+   * @return {Boolean}
+   */
+  
+  function nodeName (el, name) {
+    return el.nodeName.toLowerCase() === name.toLowerCase();
+  }
+  
+  /**
+   * Find right target to use with dom manipulation methods.
+   *
+   * @param {Object} el
+   * @param {String} html
+   * @return {Object}
+   */
+  
+  function target (el, html) {
+    return nodeName(el, 'table') && tagExp.test(html) && tagExp.exec(html)[1] === 'tr' ?
+      el.getElementsByTagName('tbody')[0] || el.appendChild(el.ownerDocument.createElement('tbody')) :
+      el;
+  }
+  
+  tire.fn.extend({
+  
+    /**
+     * Append node to element.
+     *
+     * @param {Object|String} node
+     * @return {Object}
+     */
+  
+    append: function (node) {
+      return this.each(function (i, el) {
+        tire.each(normalize(node), function () {
+          target(el, node).appendChild(this);
+        });
+      });
+    },
+  
+    /**
+     * Prepend node to element.
+     *
+     * @param {Object|String} node
+     * @return {Object}
+     */
+  
+    prepend: function (node) {
+      return this.each(function (i, el) {
+        var first = target(el, node).firstChild;
+        tire.each(normalize(node), function () {
+          if (first) {
+            first.parentNode.insertBefore(this, first);
+          } else {
+            target(el, node).appendChild(this);
+          }
+        });
+      });
+    },
+  
+    /**
+     * Add node befor element.
+     *
+     * @param {Object|String} node
+     * @return {Object}
+     */
+  
+    before: function (node) {
+      return this.each(function (i, el) {
+        tire.each(normalize(node), function () {
+          el.parentNode.insertBefore(this, el);
+        });
+      });
+    },
+  
+    /**
+     * Add node after element.
+     *
+     * @param {Object|String} node
+     * @return {Object}
+     */
+  
+    after: function (node) {
+      return this.each(function (i, el) {
+        tire.each(normalize(node), function () {
+          el.parentNode.insertBefore(this, el.nextSibling);
+        });
+      });
+    },
+  
+    /**
+     * Remove element.
+     *
+     * @return {Object}
+     */
+  
+    remove: function () {
+      return this.each(function () {
+        this.parentNode.removeChild(this);
+      });
+    },
+  
+    /**
+     * Get html from element.
+     * Set html to element.
+     *
+     * @param {Object|String} html
+     * @return {Object|String}
+     */
+  
+    html: function (html) {
+      if (html === undefined) {
+        return this[0] ? this[0].innerHTML : undefined;
+      }
+  
+      return this.each(function () {
+        try {
+          if ((tire.isString(html) || tire.isNumeric(html)) && !wrapTags.test(this.tagName)) {
+            return this.innerHTML = html;
+          }
+        } catch (e) {}
+        var el = this;
+        tire.each(normalize(this), function () {
+          return el.appendChild(this);
+        });
+      });
+    },
   
     /**
      * Check if the first element in the element collection matches the selector
@@ -1013,7 +1780,7 @@
      */
   
     is: function (selector) {
-      return this.length > 0 && tire.matches(this[0], selector);
+      return this[0] && tire.matches(this[0], selector);
     },
   
     /**
@@ -1059,7 +1826,7 @@
     children: function (selector) {
       var children = [];
       this.each(function () {
-        tire.each(slice.call(this.children, 0), function (index, value) {
+        tire.each(slice.call(this.children), function (i, value) {
           children.push(value);
         });
       });
@@ -1078,7 +1845,7 @@
   
     text: function (text) {
       if (text === undefined) {
-        return this.length > 0 ? this[0].textContent === undefined ? this[0].innerText : this[0].textContent : null;
+        return this[0] ? this[0].textContent === undefined ? this[0].innerText : this[0].textContent : '';
       } else {
         return this.each(function () {
           this.textContent = text;
@@ -1096,13 +1863,13 @@
   
     val: function (value) {
       if (!arguments.length) {
-        if (this.length > 0) {
+        if (this[0]) {
           return this[0].multiple ? this.find('option').filter(function () {
             return this.selected;
           }).pluck('value') : this[0].value;
         }
   
-        return null;
+        return undefined;
       } else {
         return this.each(function () {
           if (this.nodeType !== 1) {
@@ -1125,481 +1892,30 @@
   
     empty: function () {
       return this.each(function () {
-        this.innerHTML = '';
-      });
-    },
-  
-    /**
-     * Get html for the first element in the collection
-     * Set html for every elements in the collection
-     *
-     * @param {String|Object} html
-     * @param {String} location
-     * @return {String|Object}
-     */
-  
-    html: function (html, location) {
-      if (arguments.length === 0) {
-        return this.length > 0 ? this[0].innerHTML : null;
-      }
-  
-      location = location || 'inner';
-  
-      if (html instanceof tire) {
-        var self = this;
-        return html.each(function (index, elm) {
-          self.html.call(self, elm, location);
-        });
-      }
-  
-      return this.each(function () {
-        if (location === 'inner') {
-          if (tire.isString(html) || tire.isNumeric(html)) {
-            this.innerHTML = html;
-          } else {
-            this.innerHTML = '';
-            this.appendChild(html);
-          }
-        } else if (location === 'remove') {
-          this.parentNode.removeChild(this);
-        } else {
-          var wrapped  = wrap(html)
-            , children = wrapped.childNodes
-            , parent;
-  
-          if (location === 'prepend') {
-            this.insertBefore(wrapped, this.firstChild);
-          } else if (location === 'append') {
-            this.insertBefore(wrapped, null);
-          } else if (location === 'before') {
-            this.parentNode.insertBefore(wrapped, this);
-          } else if (location === 'after') {
-            this.parentNode.insertBefore(wrapped, (this.nextElementSibling ? this.nextElementSibling : this.nextSibling));
-          }
-  
-          parent = wrapped.parentNode;
-          while (children.length) {
-            parent.insertBefore(children[0], wrapped);
-          }
-          parent.removeChild(wrapped);
+        while (this.hasChildNodes()) {
+          this.removeChild(this.childNodes[0]);
         }
       });
     }
+  
   });
   
-  tire.each(['prepend', 'append', 'before', 'after', 'remove'], function (index, name) {
-    tire.fn[name] = function (name) {
-      return function (html) {
-        return this.html(html, name);
-      };
-    }(name);
-  });
-  
-  function wrap (html) {
-    var elm = document.createElement('div');
-    if (tire.isString(html) || tire.isNumeric(html)) {
-      elm.innerHTML = html;
-    } else {
-      elm.appendChild(html);
-    }
-    return elm;
-  }
-  tire.fn.extend({
-  
-    /**
-     * Filter element collection
-     *
-     * @param {String|Function} obj
-     * @return {Object}
-     */
-  
-    filter: function (obj) {
-      if (tire.isFunction(obj)) {
-        var elements = [];
-        this.each(function (index, elm) {
-          if (obj.call(elm, index)) {
-            elements.push(elm);
-          }
-        });
-        return tire(elements);
-      } else {
-        return this.filter(function () {
-          return tire.matches(this, obj);
-        });
-      }
-    },
-  
-    /**
-     * Get elements in list but not with this selector
-     *
-     * @param {String} selector
-     * @return {Object}
-     */
-  
-    not: function (selector) {
-      return this.filter(function () {
-        return !tire.matches(this, selector);
-      });
-    },
-  
-    /**
-     * Get the element at position specified by index from the current collection.
-     *
-     * @param {Integer} index
-     * @return {Object}
-     */
-  
-    eq: function (index) {
-      return index === -1 ? tire(slice.call(this, this.length -1)) : tire(slice.call(this, index, index + 1));
-    },
-  
-    /**
-     * Retrieve the DOM elements matched by the tire object.
-     *
-     * @param {Integer} index
-     * @return {object}
-     */
-  
-    get: function (index) {
-      return index === undefined ? slice.call(this) : this[index >= 0 ? index : index + this.length];
-    },
-  
-    /**
-     * Clone elements
-     *
-     * @return {Object}
-     */
-  
-    clone: function () {
-      var res = [];
-      this.each(function () {
-        res.push(this.cloneNode(true));
-      });
-      return tire(res);
-    }
-  });
-  var _eventId = 1
-    , c = {}
-    , returnTrue = function () { return true; }
-    , returnFalse = function () { return false; }
-    , ignoreProperties = /^([A-Z]|layer[XY]$)/
-    , mouse = {
-        mouseenter: 'mouseover',
-        mouseleave: 'mouseout'
-      }
-    , eventMethods = {
-        preventDefault: 'isDefaultPrevented',
-        stopImmediatePropagation: 'isStopImmediatePropagation',
-        stopPropagation: 'isPropagationStopped'
-      };
-  
   /**
-   * Get tire event id
-   *
-   * @param {Object} element The element to get tire event id from
-   *
-   * @return {Integer}
+   * Add `appendTo`, `prependTo`, `insertBefore` and `insertAfter` methods.
    */
   
-  function getEventId (element) {
-    return element._eventId || (element._eventId = _eventId++);
-  }
-  
-  /**
-   * Get event handlers
-   *
-   * @param {Integer} id
-   * @param {String} event
-   *
-   * @return {Array}
-   */
-  
-  function getEventHandlers (id, event) {
-    c[id] = c[id] || {};
-    return c[id][event] = c[id][event] || [];
-  }
-  
-  /**
-   * Create event handler
-   *
-   * @param {Object} element
-   * @param {String} event
-   * @param {Function} callback
-   * @param {Function} _callback Orginal callback if delegated event
-   */
-  
-  function createEventHandler (element, event, callback, _callback) {
-    var id = getEventId(element)
-      , handlers = getEventHandlers(id, event)
-      , parts = ('' + event).split('.')
-      , cb = _callback || callback;
-  
-    var fn = function (event) {
-      var data = event.data;
-      if (tire.isString(data) && /^[\[\{]/.test(data)) data = tire.parseJSON(event.data);
-      var result = callback.apply(element, [event].concat(data));
-      if (result === false) {
-        if (event.stopPropagation) event.stopPropagation();
-        if (event.preventDefault) event.preventDefault();
-        event.cancelBubble = true;
-        event.returnValue = false;
-      }
-      return result;
+  tire.each({
+    appendTo: 'append',
+    prependTo: 'prepend',
+    insertBefore: 'before',
+    insertAfter: 'after'
+  }, function (key, value) {
+    tire.fn[key] = function (selector) {
+      return tire(selector)[value](this);
     };
-  
-    fn._i = cb._i = cb._i || ++_eventId;
-    fn.realEvent = parts[0];
-    fn.ns = parts.slice(1).sort().join(' ');
-    handlers.push(fn);
-    return fn;
-  }
-  
-  /**
-   * Create event proxy for delegated events.
-   *
-   * @param {Object} event
-   *
-   * @return {Object}
-   */
-  
-  function createProxy (event) {
-    var proxy = { originalEvent: event };
-  
-    for (var key in event) {
-      if (!ignoreProperties.test(key) && event[key] !== undefined) {
-        proxy[key] = event[key];
-      }
-      for (var name in eventMethods) {
-        proxy[name] = function () {
-          this[eventMethods[name]] = returnTrue;
-          return event[name].apply(event, arguments);
-        };
-        proxy[eventMethods[name]] = returnFalse;
-      }
-    }
-  
-    return proxy;
-  }
-  
-  /**
-   * Add event to element, no support for delegate yet.
-   * Using addEventListener or attachEvent (IE)
-   *
-   * @param {Object} element
-   * @param {String} events
-   * @param {Function} callback
-   * @param {String} selector
-   */
-  
-  function addEvent (element, events, callback, selector) {
-    var fn, _callback;
-  
-    if (tire.isString(selector)) {
-      _callback = callback;
-      fn = function () {
-        return (function (element, callback, selector) {
-          return function (e) {
-            var match = tire(e.target || e.srcElement).closest(selector, element).get(0)
-              , event;
-  
-            if ((e.target || e.srcElement) === match) {
-              event = tire.extend(createProxy(e), {
-                currentTarget: match,
-                liveFired: element
-              });
-              return callback.apply(match, [event].concat(slice.call(arguments, 1)));
-            }
-          };
-        }(element, callback, selector));
-      };
-    } else {
-      callback = selector;
-      selector = undefined;
-    }
-  
-    tire.each(events.split(/\s/), function (index, event) {
-      var parts = (event + '').split('.');
-  
-      if (_callback !== undefined && parts[0] in mouse) {
-        var _fn = fn();
-        fn = function () {
-          return function (e) {
-            var related = e.relatedTarget;
-            if (!related || (related !== this && !tire.contains(this, related))) {
-              return _fn.apply(this, arguments);
-            }
-          }
-        }
-      }
-  
-      event = mouse[parts[0]] || parts[0];
-  
-      var handler = createEventHandler(element, event, fn && fn() || callback, _callback);
-  
-      if (selector) handler.selector = selector;
-  
-      if (element.addEventListener) {
-        element.addEventListener(event, handler, false);
-      } else if (element.attachEvent) {
-        element.attachEvent('on' + event, handler);
-      }
-    });
-  }
-  
-  /**
-   * Test event handler
-   *
-   * @param {Object} parts
-   * @param {Function} callback
-   * @param {String} selector
-   * @param {Function} handler
-   */
-  
-  function testEventHandler (parts, callback, selector, handler) {
-    var ns = parts.slice(1).sort().join(' ');
-  
-    return callback === undefined &&
-      (handler.selector === selector ||
-        handler.realEvent === parts[0] ||
-        handler.ns === ns) ||
-        callback._i === handler._i;
-  }
-  
-  /**
-   * Remove event to element, no support for undelegate yet.
-   * Using removeEventListener or detachEvent (IE)
-   *
-   * @todo Remove delegated events
-   *
-   * @param {Object} element
-   * @param {String} events
-   * @param {Function} callback
-   * @param {String} selector
-   */
-  
-  function removeEvent (element, events, callback, selector) {
-    var id = getEventId(element);
-  
-    if (callback === undefined && tire.isFunction(selector)) {
-      callback = selector;
-      selector = undefined;
-    }
-  
-    tire.each(events.split(/\s/), function (index, event) {
-      var parts = ('' + event).split('.');
-      event = mouse[parts[0]] || parts[0];
-      var handlers = getEventHandlers(id, event);
-  
-      for (var i = 0; i < handlers.length; i++) {
-        if (testEventHandler(parts, callback, selector, handlers[i])) {
-          if (element.removeEventListener) {
-            element.removeEventListener(event, handlers[i], false);
-          } else if (element.detachEvent) {
-            var name = 'on' + event;
-            if (tire.isString(element[name])) element[name] = null;
-            element.detachEvent(name, handlers[i]);
-          }
-          Array.remove(c[id][event], i, 1);
-        }
-      }
-      if (!c[id][event].length) delete c[id][event];
-    });
-    for (var k in c[id]) return;
-    delete c[id];
-  }
-  
-  tire.events = tire.events || {};
-  
-  tire.fn.extend({
-  
-    /**
-     * Add event to element
-     *
-     * @param {String} events
-     * @param {String} selector
-     * @param {Function} callback
-     * @return {Object}
-     */
-  
-    on: function (events, selector, callback) {
-      return this.each(function () {
-        addEvent(this, events, callback, selector);
-      });
-    },
-  
-    /**
-     * Remove event from element
-     *
-     * @param {String} events
-     * @param {String} selector
-     * @param {Function} callback
-     * @return {Object}
-     */
-  
-    off: function (events, selector, callback) {
-      return this.each(function () {
-        removeEvent(this, events, callback, selector);
-      });
-    },
-  
-    /**
-     * Trigger specific event for element collection
-     *
-     * @param {String} eventName The event to trigger
-     * @param {Object} data JSON Object to use as the event's `data` property
-     * @return {Object}
-     */
-  
-    trigger: function (eventName, data) {
-      return this.each(function (index, elm) {
-        if (elm === document && !elm.dispatchEvent) elm = document.documentElement;
-  
-        var event
-          , createEvent = !!document.createEvent
-          , parts = (eventName + '').split('.');
-  
-        eventName = mouse[parts[0]] || parts[0];
-  
-        if (createEvent) {
-          event = document.createEvent('HTMLEvents');
-          event.initEvent(eventName, true, true);
-        } else {
-          event = document.createEventObject();
-          event.cancelBubble = true;
-        }
-  
-        event.data = data || {};
-        event.eventName = eventName;
-  
-        if (tire.isString(event.data) && !tire.isString(data) && JSON.stringify) {
-          event.data = JSON.stringify(data);
-        }
-  
-        if (createEvent) {
-          elm.dispatchEvent(event);
-        } else {
-          try { // fire event in < IE 9
-            elm.fireEvent('on' + eventName, event);
-          } catch (e) { // solution to trigger custom events in < IE 9
-            elm.attachEvent('onpropertychange', function (ev) {
-              if (ev.eventName === eventName && ev.srcElement._eventId) {
-                var handlers = getEventHandlers(ev.srcElement._eventId, ev.eventName);
-                if (handlers.length) {
-                  for (var i = 0; i < handlers.length; i++) {
-                    handlers[i](ev);
-                  }
-                }
-              }
-            });
-            elm.fireEvent('onpropertychange', event);
-          }
-        }
-      });
-    }
-  
   });
 
   // Expose tire to the global object
   window.$ = window.tire = tire;
-  
-}(window));
+
+})(window);
